@@ -36,6 +36,33 @@ across sessions."
         AWS creds present → bedrock, else ANTHROPIC_BASE_URL → proxy, else echo
 ```
 
+## Real-Alexa+ architecture mapping (VERIFIED 10-20 from official docs)
+
+Source: developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-overview.html —
+**"Alexa+ acts as the MCP client. You return standard MCP responses, and Alexa+ handles
+natural language understanding, response generation, and user interface (UI) rendering."**
+and **"Alexa+ for Builders supports the 2025-11-25 version of the MCP specification."**
+
+Consequences, all three load-bearing:
+1. **Audio never reaches a third-party add-on.** The device streams audio to Amazon's cloud
+   (wake word → ASR); the MCP server receives text/structured MCP requests; Alexa+ does the
+   NLG and the device speaks it. Our text-based MCP server is therefore NOT a workaround —
+   it is exactly the real integration surface.
+2. **The sim's voice layer faithfully plays the Amazon-side stack.** Browser STT stands in
+   for Alexa's cloud ASR, browser TTS for the device speaker. UI/labels must say this
+   honestly ("voice layer simulates Alexa+'s device-side ASR/TTS; the server receives text,
+   exactly like a real Alexa+ add-on").
+3. **Version three-way alignment:** track minimum (2025-11-25) = the version Alexa+ for
+   Builders supports = the protocol our pinned SDK (@modelcontextprotocol/sdk 1.32.1)
+   implements. State this in the README/description — it's a credibility beat.
+
+Future-work paragraph material (verified same page): the **MCP Apps extension** lets an
+add-on render interactive UI in the Alexa+ conversation view via an Amazon-provided webview
+("immersive learning experiences" is their example) — that's the production path for Sala's
+review cards on real Alexa+. Also noted for A3: Amazon ships a **Local Inspector** for MCP
+add-ons and a **Web Simulator** under the Category SDK docs — reference/compare in testing
+notes; the hackathon's sanctioned path remains our own web-app simulation.
+
 ## Tools (MCP surface)
 
 | tool | in | out | notes |
