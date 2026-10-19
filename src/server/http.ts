@@ -13,6 +13,10 @@
  *    rejected 403 in the handler AND the SDK transport's DNS-rebinding
  *    protection is enabled with the same allowlist (+ allowedOrigins, default
  *    empty = browser cross-origin POSTs blocked; they always send Origin).
+ *  - CORS (A2 sim): origins on `allowedOrigins` get ACAO headers and answered
+ *    OPTIONS preflights (204). The default stays empty — no browser origin can
+ *    read responses unless the operator explicitly sanctioned it via
+ *    SALA_ALLOWED_ORIGINS. The sim dev script is the sanctioned mechanism.
  *  - POST bodies must be content-type application/json (415 otherwise), so
  *    cross-origin "simple" form/text POSTs cannot smuggle MCP payloads.
  *  - Body size is capped (413 + destroy) — no unbounded buffering DoS.
@@ -31,9 +35,22 @@ export const MAX_BODY_BYTES = 2 * 1024 * 1024; // generous for MCP JSON-RPC
 export interface SalaHttpOptions {
   /** Host-header allowlist; when set, enables 403 enforcement + SDK DNS-rebinding protection. */
   allowedHosts?: string[];
-  /** Origin allowlist for the SDK protection (default: [] — cross-origin browser POSTs blocked). */
+  /**
+   * Origin allowlist: feeds the SDK DNS-rebinding protection AND (A2) the CORS
+   * headers/preflight answers. Default [] — no browser origin can read responses.
+   */
   allowedOrigins?: string[];
 }
+
+/** Headers an MCP browser client may send on the real request (preflight ask). */
+const CORS_ALLOW_HEADERS = [
+  "Content-Type",
+  "Accept",
+  "Authorization",
+  "Last-Event-ID",
+  "MCP-Session-Id",
+  "MCP-Protocol-Version",
+].join(", ");
 
 async function readJsonBody(
   req: http.IncomingMessage,
@@ -60,6 +77,7 @@ async function readJsonBody(
 
 export function createSalaHttpServer(deps: SalaDeps, opts: SalaHttpOptions = {}): http.Server {
   const allowedHosts = opts.allowedHosts ? new Set(opts.allowedHosts) : null;
+  const allowedOrigins = opts.allowedOrigins ? new Set(opts.allowedOrigins) : null;
 
   return http.createServer(async (req, res) => {
     // Host allowlist (DNS-rebinding defense at the handler level, so it holds
@@ -67,6 +85,29 @@ export function createSalaHttpServer(deps: SalaDeps, opts: SalaHttpOptions = {})
     if (allowedHosts && !allowedHosts.has(req.headers.host ?? "")) {
       res.writeHead(403, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "Forbidden: unexpected Host header" }));
+      return;
+    }
+
+    // CORS for allowlisted browser origins (the A2 sim). Default allowlist is
+    // empty → no ACAO header is ever emitted and preflights are refused; the
+    // strict posture is unchanged unless SALA_ALLOWED_ORIGINS sanctions an origin.
+    const origin = req.headers.origin;
+    const originAllowed = typeof origin === "string" && (allowedOrigins?.has(origin) ?? false);
+    if (originAllowed) {
+      res.setHeader("Access-Control-Allow-Origin", origin as string);
+      res.setHeader("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", CORS_ALLOW_HEADERS);
+      res.setHeader("Access-Control-Expose-Headers", "MCP-Session-Id, MCP-Protocol-Version");
+      res.setHeader("Access-Control-Max-Age", "86400");
+    }
+    res.setHeader("Vary", "Origin");
+    if (req.method === "OPTIONS") {
+      if (originAllowed) {
+        res.writeHead(204).end();
+      } else {
+        res.writeHead(403, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Forbidden: origin not allowed" }));
+      }
       return;
     }
 
