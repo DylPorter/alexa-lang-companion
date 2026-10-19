@@ -46,23 +46,29 @@ across sessions."
 | `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}}` | **the money shot**: review items extracted from what was ACTUALLY said this session — words the user used or struggled with (with the user's own sentence as the example), 1-2 grammar points tied to observed mistakes; stored as a session summary |
 | `list_sessions` | `{}` | `[{id, date, language, summary}]` | the "remembers every conversation" proof; sim shows past sessions + their review lists |
 
-## Positioning (steered 10-20, Dylan): English companion for ESL learners
+## Positioning (steered twice 10-20, Dylan): language-agnostic companion, anchored in real learners
 
-The product stays language-agnostic in architecture (`targetLanguage` param), but the
-**demo language is English and the demo user persona is an ESL learner** — Alan is ESL
-himself, which gives the submission an authentic design partner, a concrete user story for
-the description, and the world's largest language-learning audience for the Impact
-criterion. The companion is the "living-room friend who happens to be a native English
-speaker," NOT a classroom tutor.
+The product identity is **language-ambiguous by design**: the companion speaks whatever
+`targetLanguage` the learner sets — nothing is hardcoded to English. The anchoring real
+users are the team itself: **Alan is ESL (English practice is his baseline need) and is
+currently learning German; Dylan is learning French.** That gives the submission authentic
+design partners with three live language stories, and the ESL angle still carries the
+Impact criterion (English learners = the world's largest language-learning audience) as a
+pitch paragraph, not a product constraint. The companion is "a living-room friend who
+happens to be a native speaker of whatever you're learning," NOT a classroom tutor.
+**Demo language for the video: decided at A2/script time (Alan's lane) — default
+recommendation is a language the team genuinely learns, so the demo is real usage.**
 
 ## Persona (system-prompt contract, testable via QA checklist)
 
 - A **friend**, not a tutor: warm, curious, asks follow-ups about the user's day; speaks
-  natural English at a comprehensible-input level (slightly simplified, never babyish).
+  the target language at a comprehensible-input level (slightly simplified, never babyish).
+  Persona is parameterized by `targetLanguage` + optional learner-L1 hint — no language
+  hardcoding in prompts or code.
 - Corrections: gentle, inline, max ~1 per exchange, never interrupts flow to lecture.
-  ESL-typical targets: articles (a/the), tense agreement, prepositions, word order —
-  corrected by natural recast ("You went to the gym? Nice — what did you do there?") more
-  than by explicit rule-dumping.
+  Corrected by natural recast (English example: "You went to the gym? Nice — what did you
+  do there?") more than explicit rule-dumping; common error classes (articles, tense
+  agreement, prepositions, word order) apply across the demo languages.
 - Memory use: natural references ("How did that presentation go yesterday?") only when
   genuinely relevant to stored facts. Fabricating memories = integrity violation, same
   rule as the fact-checker: never assert what isn't stored.
@@ -79,7 +85,7 @@ the user's own sentences + grammar notes), a collapsible **MCP tool-call inspect
 live JSON-RPC (proves the server is real MCP, judges love seeing the seam), and an honest
 "simulated Alexa+ experience" label (rules require the video to clearly show the simulation).
 
-## Demo flow (<3 min, for the video script later) — ESL English scenario
+## Demo flow (<3 min, for the video script later) — example scenario in English/ESL (video language is Alan's call; the flow is identical in German/French)
 
 1. Evening: user opens the companion → it greets and references a logged activity from
    earlier ("How did the gym session go? You said you'd try the climbing wall") — the memory beat.
@@ -101,10 +107,12 @@ live JSON-RPC (proves the server is real MCP, judges love seeing the seam), and 
   LLM-swap classes (Echo offline / Proxy live / **Bedrock fully implemented**, env-selected),
   system-prompt persona (English ESL companion per Positioning). *Acceptance:* MCP
   protocol-level integration test via an SDK client drives chat→log→recall→end_session against
-  EchoLLM fully offline; unit tests for review extraction over an **English ESL fixture
-  conversation** (article/tense/preposition mistakes → review items quoting the learner's own
-  sentences); Bedrock path smokes IFF AWS creds exist in `.env` (else reported as gated, not
-  failed); `npm test` green with zero network.
+  EchoLLM fully offline; unit tests for review extraction over **fixture conversations in two
+  languages** (an English ESL transcript with article/tense/preposition mistakes + one
+  non-English fixture, e.g. a German or French learner transcript, proving the extraction is
+  language-agnostic — review items quote the learner's own sentences in both); Bedrock path
+  smokes IFF AWS creds exist in `.env` (else reported as gated, not failed); `npm test` green
+  with zero network.
 - **A2 — web sim + demo E2E:** sim UI as an MCP client; full demo flow works against the qwen
   proxy with real Spanish conversation. *Acceptance:* demo flow run manually end-to-end, review
   items demonstrably derived from the actual conversation (screenshot evidence); QA checklist
