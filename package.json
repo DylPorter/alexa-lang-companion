@@ -1,0 +1,30 @@
+{
+  "name": "sala-lang-companion",
+  "version": "0.1.0",
+  "description": "Sala — living-room language companion MCP server (Alexa+ track, Amazon Build Ship Shape hackathon)",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/server/index.ts",
+    "test": "vitest run",
+    "smoke": "tsx scripts/live-smoke.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "3.1152.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "better-sqlite3": "13.0.3",
+    "dotenv": "17.2.3",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "@types/node": "22.18.10",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}
