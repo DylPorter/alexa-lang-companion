@@ -136,7 +136,16 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         .map((m) => ({ role: m.role, content: m.content }));
       history.push({ role: "user", content: message });
 
-      const reply = await llm.invoke("chat", system, history);
+      let reply = (await llm.invoke("chat", system, history)).trim();
+      if (!reply) {
+        // Live proxies occasionally return empty content (observed on the qwen
+        // proxy, 2026-10-20): one retry, then an honest fallback — never pretend.
+        console.warn("[chat] empty LLM reply, retrying once");
+        reply = (await llm.invoke("chat", system, history)).trim();
+      }
+      if (!reply) {
+        reply = "Sorry — I lost my words for a second. Could you say that again?";
+      }
       memory.addMessage(sid, "assistant", reply);
 
       return {

@@ -16,8 +16,11 @@ export class ProxyLLM implements LLM {
   constructor(baseUrl?: string, apiKey?: string, model?: string) {
     this.base = (baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? "").replace(/\/+$/, "");
     if (!this.base) throw new Error("ProxyLLM requires ANTHROPIC_BASE_URL");
+    // First NON-EMPTY wins: shells (and Claude Code's settings.json) often export
+    // ANTHROPIC_API_KEY as an empty string alongside a real ANTHROPIC_AUTH_TOKEN.
     this.key =
-      apiKey ?? process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN ?? "";
+      [apiKey, process.env.ANTHROPIC_API_KEY, process.env.ANTHROPIC_AUTH_TOKEN]
+        .find((v) => v && v.length > 0) ?? "";
     if (!this.key) {
       throw new Error("ProxyLLM requires ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN)");
     }
