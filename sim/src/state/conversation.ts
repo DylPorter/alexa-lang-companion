@@ -1,0 +1,90 @@
+/**
+ * Pure conversation state — no React, no I/O. Unit-tested:
+ *  - sessionId pass-through: captured from the first chat reply, echoed back
+ *    on every subsequent request (chatRequestArgs), cleared on session end.
+ *  - memoryReferenced drives the "remembered" badge and NOTHING else.
+ */
+import type { ChatResult } from "../mcp/types";
+
+export interface Turn {
+  role: "user" | "assistant";
+  text: string;
+  /** assistant turns only: server said stored facts were genuinely recalled. */
+  remembered?: boolean;
+  ts: number;
+}
+
+export interface ConvState {
+  sessionId: string | null;
+  sessionEnded: boolean;
+  turns: Turn[];
+  sending: boolean;
+  error: string | null;
+}
+
+export const initialConv: ConvState = {
+  sessionId: null,
+  sessionEnded: false,
+  turns: [],
+  sending: false,
+  error: null,
+};
+
+export type ConvAction =
+  | { type: "SEND"; text: string; ts: number }
+  | { type: "REPLY"; result: ChatResult; ts: number }
+  | { type: "FAIL"; error: string }
+  | { type: "END_SESSION" }
+  | { type: "CLEAR" };
+
+export function convReducer(state: ConvState, action: ConvAction): ConvState {
+  switch (action.type) {
+    case "SEND":
+      return {
+        ...state,
+        sending: true,
+        error: null,
+        turns: [...state.turns, { role: "user", text: action.text, ts: action.ts }],
+      };
+    case "REPLY":
+      return {
+        ...state,
+        sending: false,
+        sessionId: action.result.sessionId,
+        turns: [
+          ...state.turns,
+          {
+            role: "assistant",
+            text: action.result.reply,
+            remembered: action.result.memoryReferenced === true,
+            ts: action.ts,
+          },
+        ],
+      };
+    case "FAIL":
+      return { ...state, sending: false, error: action.error };
+    case "END_SESSION":
+      // Keep the transcript visible (review references it); drop the id so the
+      // next message honestly starts a NEW session.
+      return { ...state, sessionId: null, sessionEnded: true, sending: false };
+    case "CLEAR":
+      return { ...initialConv };
+  }
+}
+
+/**
+ * The exact `chat` tool arguments for a user message: sessionId is passed
+ * back every turn once known (A1 contract), targetLanguage always explicit
+ * from the picker.
+ */
+export function chatRequestArgs(
+  state: Pick<ConvState, "sessionId">,
+  message: string,
+  targetLanguage: string,
+): { message: string; sessionId?: string; targetLanguage: string } {
+  return {
+    message,
+    ...(state.sessionId ? { sessionId: state.sessionId } : {}),
+    targetLanguage,
+  };
+}

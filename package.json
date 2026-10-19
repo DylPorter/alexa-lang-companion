@@ -10,7 +10,10 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx src/server/index.ts",
+    "dev": "SALA_ALLOWED_ORIGINS=\"${SALA_ALLOWED_ORIGINS:-http://localhost:5173}\" concurrently -n server,sim -c cyan,magenta \"npm start\" \"vite\"",
+    "demo": "bash scripts/demo.sh",
     "test": "vitest run",
+    "typecheck": "tsc && tsc -p sim",
     "smoke": "tsx scripts/live-smoke.ts"
   },
   "dependencies": {
