@@ -29,7 +29,11 @@ across sessions."
    │    account linking (documented, stubbed for demo as a single-user account id)
    └─ LLM backend: swappable Echo/Proxy/Bedrock classes (same shape proven in
         firetv-factcheck/backend/verify_agent.py — Dylan's own in-window code, clean-room OK)
-        dev = qwen proxy (ANTHROPIC_BASE_URL); Bedrock = optional AWS Builder entry
+        dev = qwen proxy (ANTHROPIC_BASE_URL); **Bedrock = FIRST-CLASS core backend
+        (steered 10-20): the submission demo runs on Bedrock (Claude via converse API,
+        @aws-sdk/client-bedrock-runtime) — it is the AWS Builder mini-challenge evidence,
+        not an optional extra.** Selection: explicit SALA_LLM=bedrock|proxy|echo, else
+        AWS creds present → bedrock, else ANTHROPIC_BASE_URL → proxy, else echo
 ```
 
 ## Tools (MCP surface)
@@ -42,12 +46,29 @@ across sessions."
 | `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}}` | **the money shot**: review items extracted from what was ACTUALLY said this session — words the user used or struggled with (with the user's own sentence as the example), 1-2 grammar points tied to observed mistakes; stored as a session summary |
 | `list_sessions` | `{}` | `[{id, date, language, summary}]` | the "remembers every conversation" proof; sim shows past sessions + their review lists |
 
+## Positioning (steered 10-20, Dylan): English companion for ESL learners
+
+The product stays language-agnostic in architecture (`targetLanguage` param), but the
+**demo language is English and the demo user persona is an ESL learner** — Alan is ESL
+himself, which gives the submission an authentic design partner, a concrete user story for
+the description, and the world's largest language-learning audience for the Impact
+criterion. The companion is the "living-room friend who happens to be a native English
+speaker," NOT a classroom tutor.
+
 ## Persona (system-prompt contract, testable via QA checklist)
 
-- A **friend**, not a tutor: warm, curious, asks follow-ups about the user's day; target language by default (demo language: **Spanish**), comprehensible-input style (slightly simplified, natural).
+- A **friend**, not a tutor: warm, curious, asks follow-ups about the user's day; speaks
+  natural English at a comprehensible-input level (slightly simplified, never babyish).
 - Corrections: gentle, inline, max ~1 per exchange, never interrupts flow to lecture.
-- Memory use: natural references ("¿Cómo salió la presentación de ayer?") only when genuinely relevant to stored facts. Fabricating memories = integrity violation, same rule as the fact-checker: never assert what isn't stored.
-- Session close: on `end_session`, switches to the user's native language for the review panel (review is for learning, not immersion).
+  ESL-typical targets: articles (a/the), tense agreement, prepositions, word order —
+  corrected by natural recast ("You went to the gym? Nice — what did you do there?") more
+  than by explicit rule-dumping.
+- Memory use: natural references ("How did that presentation go yesterday?") only when
+  genuinely relevant to stored facts. Fabricating memories = integrity violation, same
+  rule as the fact-checker: never assert what isn't stored.
+- Session close: on `end_session`, the review panel is presented in clear simple English
+  (learner L1 configurable in the schema; English-first for the demo — explanations must
+  be comprehensible to the learner, examples are the learner's OWN sentences).
 
 ## Web sim (demo surface)
 
@@ -58,23 +79,32 @@ the user's own sentences + grammar notes), a collapsible **MCP tool-call inspect
 live JSON-RPC (proves the server is real MCP, judges love seeing the seam), and an honest
 "simulated Alexa+ experience" label (rules require the video to clearly show the simulation).
 
-## Demo flow (<3 min, for the video script later)
+## Demo flow (<3 min, for the video script later) — ESL English scenario
 
-1. Evening: "Sala, háblame en español" → companion greets, references a logged activity from
-   earlier ("¿Ya terminaste el proyecto?") — the memory beat.
-2. 3-4 turns of real conversation about the user's day → one gentle correction visible.
-3. "Terminemos por hoy" → `end_session` → review panel: 4-6 vocab items INCLUDING one the user
-   got wrong earlier (their own sentence shown), 1-2 grammar points from observed mistakes.
-4. Cut to `list_sessions`: yesterday's session + review still there — state across sessions.
+1. Evening: user opens the companion → it greets and references a logged activity from
+   earlier ("How did the gym session go? You said you'd try the climbing wall") — the memory beat.
+2. 3-4 turns of real conversation about the user's day in English → one gentle recast
+   correction visible (user: "Yesterday I go to climbing wall." → companion naturally models
+   "You WENT to the climbing wall? How did it go?" without breaking the chat).
+3. "Let's wrap up for today" → `end_session` → review panel: 4-6 vocabulary items INCLUDING
+   words from the actual conversation, plus 1-2 grammar points built from the user's own
+   mistakes (their sentence shown, corrected form beside it, one-line explanation).
+4. Cut to `list_sessions`: yesterday's session + review still there — state across sessions,
+   and yesterday's review item resurfaces naturally in today's chat (spaced-repetition beat
+   if it lands cleanly; cut if it doesn't — never staged).
 5. Tool-call inspector visible throughout the last beats; "simulated Alexa+ experience" label;
    one line on portable private memory (no third-party Alexa+ memory API exists — the DB is yours).
 
 ## Phases + acceptance
 
 - **A1 — server core:** MCP server (Streamable HTTP) with all 5 tools, SQLite memory + FTS5,
-  LLM-swap classes (Echo offline / Proxy live), system-prompt persona. *Acceptance:* MCP
+  LLM-swap classes (Echo offline / Proxy live / **Bedrock fully implemented**, env-selected),
+  system-prompt persona (English ESL companion per Positioning). *Acceptance:* MCP
   protocol-level integration test via an SDK client drives chat→log→recall→end_session against
-  EchoLLM fully offline; unit tests for review extraction over a fixture conversation; `npm test` green.
+  EchoLLM fully offline; unit tests for review extraction over an **English ESL fixture
+  conversation** (article/tense/preposition mistakes → review items quoting the learner's own
+  sentences); Bedrock path smokes IFF AWS creds exist in `.env` (else reported as gated, not
+  failed); `npm test` green with zero network.
 - **A2 — web sim + demo E2E:** sim UI as an MCP client; full demo flow works against the qwen
   proxy with real Spanish conversation. *Acceptance:* demo flow run manually end-to-end, review
   items demonstrably derived from the actual conversation (screenshot evidence); QA checklist
