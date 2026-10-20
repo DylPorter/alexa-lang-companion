@@ -70,7 +70,11 @@ to idle, mic disabled through thinking+speaking, re-arms after TTS finishes.
    keyword with the logged activity ("gym", "marché") — FTS5 is keyword+recency, not semantic.
 4. `?voicedebug=1` shows the labeled STT test double — do NOT record it as if it were the mic.
 5. Voice language follows the language picker (STT locale en-US/de-DE/fr-FR; Piper voices
-   exist for en+fr; de needs `de_DE-thorsten-medium` downloaded).
+   exist for **en+fr+de** — `de_DE-thorsten-medium` downloaded 2026-10-20 (A3) into the
+   gitignored `data/piper-voices/`, smoke-tested through the exact sim plumbing
+   (`GET /tts?lang=de` → 200, 16-bit mono 22050 Hz WAV ≈3.9 s audio, 1.6 s synthesis).
+   German voice mode is complete on this machine; browser STT for de-DE still needs the
+   real-mic rehearsal like every locale).
 
 ## Rough edges (honest, for A3)
 

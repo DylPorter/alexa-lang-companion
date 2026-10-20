@@ -471,7 +471,11 @@ button:disabled { opacity: 0.45; cursor: default; }
   padding: 10px;
   font-size: 11.5px;
   line-height: 1.45;
-  overflow-x: auto;
+  /* A3 (TV-size gap from A2): wrap long JSON strings (end_session reviews carry
+     full learner sentences) instead of horizontal-scrolling them out of view */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
   max-height: 260px;
   overflow-y: auto;
   color: var(--text-dim);
