@@ -10,6 +10,7 @@ import {
   extractReview,
   extractReviewHeuristic,
   ressourceExample,
+  spliceGrammarSummary,
   validateLLMReview,
 } from "../src/review/extract.js";
 import { EchoLLM } from "../src/llm/echo.js";
@@ -17,6 +18,7 @@ import type { LLM, ChatMessage } from "../src/llm/types.js";
 import {
   ESL_ENGLISH_FIXTURE,
   FRENCH_FIXTURE,
+  FRENCH_SUBJUNCTIVE_FIXTURE,
   userSentences,
 } from "./fixtures/conversations.js";
 
@@ -232,5 +234,142 @@ describe("LLM enhancement path — validation is the contract", () => {
     expect(extractJsonObject('```json\n{"a":1}\n```')).toEqual({ a: 1 });
     expect(extractJsonObject('Here you go: {"a":1} — enjoy!')).toEqual({ a: 1 });
     expect(extractJsonObject("no json here")).toBeNull();
+  });
+});
+
+describe("A3 FR/DE table enrichment — the live-demo mistake shapes", () => {
+  it("catches past marker + présent (the A2 FR demo regression sentence)", () => {
+    const turns: ChatMessage[] = [
+      { role: "user", content: "Hier je vais au marché et je achète des fraises avec mon ami." },
+    ];
+    const found = detectMistakes(turns, "fr").map((m) => m.pattern.id);
+    expect(found).toContain("fr-past-marker-present");
+    expect(found).toContain("fr-elision-je");
+    const tense = detectMistakes(turns, "fr").find((m) => m.pattern.id === "fr-past-marker-present");
+    expect(tense?.correction).toBe("je suis allé");
+    expect(tense?.userSentence).toBe("Hier je vais au marché et je achète des fraises avec mon ami.");
+  });
+
+  it("FR table enrichment does not touch the original fixture's detections", () => {
+    const ids = detectMistakes(FRENCH_FIXTURE, "fr").map((m) => m.pattern.id);
+    expect(ids).toEqual([
+      "fr-passe-compose-aller",
+      "fr-beaucoup-de",
+      "fr-age-avoir",
+      "fr-voiture-gender",
+    ]);
+  });
+
+  it("catches German Perfekt with an intervening adverb + accusative der→den", () => {
+    const turns: ChatMessage[] = [
+      { role: "user", content: "Ich habe gestern gegangen ins Kino. Ich sehe der Mann dort." },
+    ];
+    const found = detectMistakes(turns, "de");
+    expect(found.map((m) => m.pattern.id)).toEqual(["de-perf-haben-sein", "de-accusative-der"]);
+    expect(found[0].correction).toBe("ich bin gegangen");
+    expect(found[1].correction).toBe("den mann");
+  });
+});
+
+describe("A3 routing: empty heuristic grammar → validated LLM grammar survives (FR regression fix)", () => {
+  const turns = userSentences(FRENCH_SUBJUNCTIVE_FIXTURE);
+
+  it("premise: heuristics find vocab but ZERO grammar on the subjunctive fixture", () => {
+    const review = extractReviewHeuristic(FRENCH_SUBJUNCTIVE_FIXTURE, CFG_FR);
+    expect(review.grammar).toEqual([]);
+    expect(review.vocabulary.length).toBeGreaterThan(0);
+    expect(review.summary).toMatch(/no grammar mistakes/i);
+  });
+
+  it("splices validated LLM grammar onto the heuristic review even when LLM vocab fails validation", async () => {
+    const mock: LLM = {
+      name: "proxy",
+      async invoke() {
+        return JSON.stringify({
+          // invented example → dropped → LLM vocab is empty (old code fell back and lost the grammar)
+          vocabulary: [{ word: "marché", example: "We went shopping for tomatoes together." }],
+          grammar: [
+            {
+              point: "Subjunctive after « vouloir que »",
+              example: "Je veux que tu viens avec moi au marché demain.",
+              correction: "Je veux que tu viennes avec moi",
+              explanation: "After « vouloir que », the verb takes the subjunctive: « que tu viennes ».",
+            },
+            // fabricated example → dropped
+            { point: "Invented", example: "Nous sommes allés au cinéma.", correction: "x", explanation: "y" },
+          ],
+          summary: "You planned a market trip with Sala.",
+        });
+      },
+    };
+    const { review, path } = await extractReview(FRENCH_SUBJUNCTIVE_FIXTURE, CFG_FR, mock);
+    expect(path).toBe("llm");
+    expect(review.grammar.length).toBe(1);
+    expect(review.grammar[0].example).toBe("Je veux que tu viens avec moi au marché demain.");
+    expect(review.grammar[0].correction).toBe("Je veux que tu viennes avec moi");
+    // vocabulary stays the heuristic's — verbatim by construction
+    expect(review.vocabulary.length).toBeGreaterThan(0);
+    expectExamplesVerbatim(review, turns);
+    expect(review.summary).toBe("You planned a market trip with Sala.");
+  });
+
+  it("summary clause is rewritten when the LLM gives no summary", async () => {
+    const mock: LLM = {
+      name: "bedrock",
+      async invoke() {
+        return JSON.stringify({
+          vocabulary: [],
+          grammar: [
+            {
+              point: "Subjunctive after « vouloir que »",
+              example: "Je veux que tu viens avec moi au marché demain.",
+              correction: "que tu viennes",
+              explanation: "Subjunctive after vouloir que.",
+            },
+          ],
+          summary: "",
+        });
+      },
+    };
+    const { review, path } = await extractReview(FRENCH_SUBJUNCTIVE_FIXTURE, CFG_FR, mock);
+    expect(path).toBe("llm");
+    expect(review.summary).not.toMatch(/no grammar mistakes/i);
+    expect(review.summary).toMatch(/1 grammar point .*review model/);
+  });
+
+  it("all-fabricated LLM grammar → honest empty grammar, heuristic path (no fabrication)", async () => {
+    const mock: LLM = {
+      name: "proxy",
+      async invoke() {
+        return JSON.stringify({
+          vocabulary: [],
+          grammar: [
+            { point: "Invented", example: "Nous avons visité Paris.", correction: "x", explanation: "y" },
+          ],
+          summary: "Something.",
+        });
+      },
+    };
+    const { review, path } = await extractReview(FRENCH_SUBJUNCTIVE_FIXTURE, CFG_FR, mock);
+    expect(path).toBe("heuristic");
+    expect(review.grammar).toEqual([]);
+    expectExamplesVerbatim(review, turns);
+  });
+
+  it("offline determinism preserved: EchoLLM never routes to the LLM path", async () => {
+    const { review, path } = await extractReview(FRENCH_SUBJUNCTIVE_FIXTURE, CFG_FR, new EchoLLM());
+    expect(path).toBe("heuristic");
+    expect(review.grammar).toEqual([]);
+  });
+
+  it("spliceGrammarSummary swaps only the no-grammar clause", () => {
+    const s = "You practiced French talking about: marché, semaines. This review keeps 5 words you used and found no grammar mistakes worth flagging this session.";
+    const out = spliceGrammarSummary(s, 2);
+    expect(out).toContain("marché, semaines");
+    expect(out).toContain("2 grammar points from mistakes in this session");
+    expect(out).not.toMatch(/no grammar mistakes/i);
+    // a summary that already counted grammar points is left alone
+    const s2 = "…keeps 4 words you used and 1 grammar point from mistakes in this session.";
+    expect(spliceGrammarSummary(s2, 1)).toBe(s2);
   });
 });

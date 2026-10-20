@@ -117,6 +117,13 @@ const MISTAKES_EN: MistakePattern[] = [
   },
 ];
 
+/** Présent → passé composé for the common irregulars/-er verbs (FR tense marker). */
+const FR_PAST_MAP: Record<string, string> = {
+  vais: "suis allé", vient: "suis venu", reste: "suis resté",
+  achète: "ai acheté", mange: "ai mangé", fais: "ai fait",
+  prends: "ai pris", regarde: "ai regardé",
+};
+
 /**
  * French learner patterns (second fixture language; Dylan's own learning story).
  * Same error-class taxonomy where it maps.
@@ -159,6 +166,28 @@ const MISTAKES_FR: MistakePattern[] = [
     explanation: "« Voiture » is feminine: « la voiture », « une voiture ».",
     vocabNote: "la voiture = the car (feminine)",
   },
+  {
+    // The shape the live A2 FR demo actually produced ("Hier je vais au marché"):
+    // past time marker + present tense. Mirrors en-past-tense-adverb.
+    id: "fr-past-marker-present",
+    errorClass: "tense",
+    re: /\b(?:hier|la semaine dernière|le week-end dernier|ce matin)\b[^.!?]*?\bje\s+(vais|vient|reste|achète|mange|fais|prends|regarde)\b/i,
+    correction: (m) => `je ${FR_PAST_MAP[m[1].toLowerCase()] ?? m[1]}`,
+    point: "Passé composé after past time markers",
+    explanation:
+      "« Hier » puts the sentence in the past: « je vais » becomes « je suis allé », « j'achète » becomes « j'ai acheté ».",
+    vocabNote: "passé composé: aller → je suis allé, acheter → j'ai acheté",
+  },
+  {
+    id: "fr-elision-je",
+    errorClass: "idiom",
+    re: /\bje\s+(ai|habite|achète|adore|arrive|appelle|espère)\b/i,
+    correction: (m) => `j'${m[1].toLowerCase()}`,
+    point: "Elision: « j' » before a vowel",
+    explanation:
+      "« Je » elides to « j' » before a vowel sound: « j'ai », « j'habite », « j'achète » — never « je ai ».",
+    vocabNote: "j'ai = I have / I've (elided je ai)",
+  },
 ];
 
 /** Small German table so a German session isn't grammar-blind (Alan's lane). */
@@ -166,7 +195,8 @@ const MISTAKES_DE: MistakePattern[] = [
   {
     id: "de-perf-haben-sein",
     errorClass: "auxiliary",
-    re: /\bich habe (gegangen|gefahren|gelaufen|gekommen)\b/i,
+    // one optional intervening word so "ich habe gestern gegangen" is caught too
+    re: /\bich habe (?:\w+\s)?(gegangen|gefahren|gelaufen|gekommen)\b/i,
     correction: (m) => `ich bin ${m[1].toLowerCase()}`,
     point: "Perfekt with sein for movement verbs",
     explanation: "Movement verbs take sein in the Perfekt: „ich bin gegangen“, not „ich habe gegangen“.",
@@ -180,6 +210,15 @@ const MISTAKES_DE: MistakePattern[] = [
     point: "Gender: „die Stadt“ (feminine)",
     explanation: "These nouns are feminine and take „die“ in the nominative: „die Stadt“, „die Wohnung“.",
     vocabNote: "die Stadt / die Wohnung (feminine)",
+  },
+  {
+    id: "de-accusative-der",
+    errorClass: "article",
+    re: /\b(?:ich sehe|ich habe|ich kenne|ich mag|ich brauche|ich suche)\s+der\s+(mann|junge|hund|freund|kaffee|tee|apfel|wagen|schlüssel|schluessel)\b/i,
+    correction: (m) => `den ${m[1].toLowerCase()}`,
+    point: "Accusative: „den Mann“ (masculine direct object)",
+    explanation: "A masculine direct object takes „den“ in the accusative: „ich sehe den Mann“, not „ich sehe der Mann“.",
+    vocabNote: "der Mann → ich sehe DEN Mann (accusative)",
   },
 ];
 
@@ -486,10 +525,27 @@ export function validateLLMReview(raw: Record<string, unknown>, userTurns: strin
 }
 
 /**
+ * When validated LLM grammar is spliced onto an otherwise heuristic review, the
+ * heuristic summary's "no grammar mistakes" clause would contradict the panel —
+ * swap just that clause, keeping the (transcript-derived) topic words intact.
+ */
+export function spliceGrammarSummary(summary: string, grammarCount: number): string {
+  const clause =
+    `and ${grammarCount} grammar point${grammarCount === 1 ? "" : "s"} ` +
+    "from mistakes in this session (flagged by the review model).";
+  return summary.replace(/and found no grammar mistakes worth flagging this session\.$/, clause);
+}
+
+/**
  * Full extraction entry point used by the end_session tool.
  * With EchoLLM (or when the LLM pass fails validation) the heuristic path
  * decides; with Proxy/Bedrock the LLM pass enhances and every item is validated
  * against the transcript before it is kept.
+ *
+ * A3 routing rule (FR grammar-gap fix): when the heuristics found ZERO grammar
+ * items, LLM-proposed grammar that survives verbatim validation is KEPT even if
+ * the rest of the LLM review fell back — an empty heuristic table must not veto
+ * a mistake the model demonstrably observed in the transcript.
  */
 export async function extractReview(
   transcript: ChatMessage[],
@@ -514,11 +570,32 @@ export async function extractReview(
       console.warn(`[review] dropped ${dropped.length} unvalidated LLM item(s):`, dropped);
     }
     // LLM output must beat the floor the heuristics set, else fall back.
-    if (review.vocabulary.length === 0) return { review: heuristic, path: "heuristic" };
+    if (review.vocabulary.length === 0) {
+      // The model's vocab failed verbatim validation — but its validated GRAMMAR
+      // must not be thrown away with it. Heuristic tables are thin outside EN;
+      // dropping LLM grammar here was the A2 FR regression (a session with real
+      // tense mistakes came back with grammar: []). Splice validated grammar onto
+      // the heuristic review (whose vocab is verbatim by construction).
+      if (heuristic.grammar.length === 0 && review.grammar.length > 0) {
+        return {
+          review: {
+            ...heuristic,
+            grammar: review.grammar.slice(0, 2),
+            summary:
+              review.summary.trim() || spliceGrammarSummary(heuristic.summary, review.grammar.length),
+          },
+          path: "llm",
+        };
+      }
+      return { review: heuristic, path: "heuristic" };
+    }
     if (review.grammar.length === 0 && heuristic.grammar.length > 0) {
       // never let the model talk us out of a mistake we actually observed
       review.grammar = heuristic.grammar.slice(0, 2);
     }
+    // ...and the reverse floor: if heuristics observed nothing but the model
+    // returned validated grammar, the LLM review already carries it (validated
+    // examples only), so nothing extra to do here.
     if (!review.summary) review.summary = heuristic.summary;
     return { review, path: "llm" };
   } catch (err) {

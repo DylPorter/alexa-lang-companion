@@ -49,6 +49,19 @@ export const FRENCH_FIXTURE: ChatMessage[] = [
   { role: "assistant", content: "Une belle soirée entre frère et sœur, alors !" },
 ];
 
+/**
+ * French session whose mistakes are OUTSIDE the heuristic tables (subjunctive
+ * after « vouloir que », « depuis » + tense). The deterministic path finds
+ * vocab but zero grammar — this is the A3 fixture for the empty-heuristic →
+ * LLM-routing decision logic (the live A2 FR regression shape).
+ */
+export const FRENCH_SUBJUNCTIVE_FIXTURE: ChatMessage[] = [
+  { role: "user", content: "Salut Sala ! Je veux que tu viens avec moi au marché demain." },
+  { role: "assistant", content: "Avec plaisir ! Tu veux que je vienne t'aider à porter les sacs ?" },
+  { role: "user", content: "Oui ! Je cherche des tomates fraîches depuis trois semaines au marché." },
+  { role: "assistant", content: "Trois semaines sans bonnes tomates, quel drame ! Tu fais une sauce ce week-end ?" },
+];
+
 /** Every learner (user) sentence across a fixture — the verbatim source of truth. */
 export function userSentences(transcript: ChatMessage[]): string[] {
   return transcript.filter((t) => t.role === "user").map((t) => t.content);
