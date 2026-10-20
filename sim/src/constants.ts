@@ -5,8 +5,13 @@
  */
 export const PRODUCT_NAME = "Sala";
 
-/** MCP server endpoint. Override with ?mcp=http://host:port/mcp for flexibility. */
-export const DEFAULT_MCP_URL = "http://127.0.0.1:3000/mcp";
+/**
+ * MCP server endpoint. `scripts/demo.sh` injects VITE_MCP_URL so the sim always
+ * points at the server it was started beside (even with a PORT override);
+ * ?mcp=http://host:port/mcp still wins for ad-hoc use.
+ */
+export const DEFAULT_MCP_URL: string =
+  (import.meta.env.VITE_MCP_URL as string | undefined) ?? "http://127.0.0.1:3000/mcp";
 
 /** Health endpoint derived from the MCP URL (same origin, /health). */
 export function healthUrlFor(mcpUrl: string): string {

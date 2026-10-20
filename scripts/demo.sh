@@ -14,6 +14,9 @@ SIM_PORT="${SIM_PORT:-5173}"
 export PORT
 export SALA_ALLOWED_ORIGINS="${SALA_ALLOWED_ORIGINS:-http://localhost:${SIM_PORT}}"
 export SALA_LLM="${SALA_LLM:-proxy}"
+# Tell the sim where THIS server lives (matters whenever PORT != 3000, e.g.
+# PORT=3100 on a machine where 3000 belongs to another process).
+export VITE_MCP_URL="${VITE_MCP_URL:-http://127.0.0.1:${PORT}/mcp}"
 
 CMDS=("npm start" "vite --port ${SIM_PORT} --strictPort")
 NAMES="server,sim"
@@ -36,6 +39,8 @@ cat <<EOF
   Sala — demo runbook
   ─────────────────────────────────────────────────────────────
   1. Open the sim:      http://localhost:${SIM_PORT}
+     (the sim auto-points at this server via VITE_MCP_URL; ad-hoc override
+      with ?mcp=http://host:port/mcp)
      (MCP server:       http://127.0.0.1:${PORT}/mcp · health: /health)
   2. Log an activity ("I went to the gym, tried the climbing wall"),
      then say hi mentioning it — Sala recalls it genuinely (badge).
