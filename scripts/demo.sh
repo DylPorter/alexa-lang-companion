@@ -25,6 +25,10 @@ if [ -x "$ROOT/.piper-venv/bin/piper" ] && ls "$ROOT"/data/piper-voices/*.onnx >
   CMDS+=("PIPER_ALLOWED_ORIGINS=http://localhost:${SIM_PORT} node scripts/piper-tts-server.mjs")
   NAMES+=",tts"
   COLORS+=",green"
+elif [ -n "${REQUIRE_VOICE:-}" ]; then
+  echo "demo:voice needs the local Piper TTS fallback (.piper-venv + data/piper-voices/) and it is missing." >&2
+  echo "Either install it (see README/qa doc) or run plain 'npm run demo' (browser voices or text-only)." >&2
+  exit 1
 fi
 
 cat <<EOF

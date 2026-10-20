@@ -41,6 +41,18 @@ export default function App() {
     [],
   );
   const sttOk = useMemo(() => sttSupported(), []);
+  /**
+   * Headless-QA affordance (?voicedebug=1): injects an STT final transcript
+   * through the EXACT mic path (state machine + speak()), for machines with no
+   * microphone / no browser SR service. Visible + labeled when active; the
+   * spoken reply is always real TTS. Not a demo shortcut — a test double for
+   * the mic only.
+   */
+  const voiceDebug = useMemo(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("voicedebug"),
+    [],
+  );
+  const [sttInjectDraft, setSttInjectDraft] = useState("");
   const [conn, setConn] = useState<Conn>({ status: "connecting" });
   const clientRef = useRef<SalaClient | null>(null);
 
@@ -193,6 +205,17 @@ export default function App() {
     sttHandleRef.current = handle;
   }, [voice, sttOk, conv.sending, ending, language, send, voiceEvent]);
 
+  const injectSttFinal = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t || voice !== "idle") return;
+      voiceEvent({ type: "MIC_ON" });
+      voiceEvent({ type: "STT_FINAL" });
+      void send(t, "voice");
+    },
+    [voice, send, voiceEvent],
+  );
+
   const logActivity = useCallback(
     async (text: string) => {
       const client = clientRef.current;
@@ -314,7 +337,11 @@ export default function App() {
                     type="button"
                     className={voice === "listening" ? "mic-button mic-listening" : "mic-button"}
                     onClick={micToggle}
-                    disabled={!ready || !micEnabled(voice, sttOk, conv.sending || ending)}
+                    // enabled while listening (manual stop) or when the gate allows arming
+                    disabled={
+                      !ready ||
+                      (voice !== "listening" && !micEnabled(voice, sttOk, conv.sending || ending))
+                    }
                     data-testid="mic-button"
                     aria-label={voice === "listening" ? "Stop listening" : `Speak to ${PRODUCT_NAME}`}
                     title={
@@ -344,6 +371,29 @@ export default function App() {
                 ? "Voice input isn't available in this browser (no Web Speech API) — the text path always works."
                 : voiceNotice}
             </p>
+          )}
+          {voiceDebug && (
+            <form
+              className="voice-debug"
+              data-testid="stt-inject-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                injectSttFinal(sttInjectDraft);
+                setSttInjectDraft("");
+              }}
+            >
+              <span className="voice-notice">headless QA: STT test double →</span>
+              <input
+                type="text"
+                value={sttInjectDraft}
+                onChange={(e) => setSttInjectDraft(e.target.value)}
+                placeholder="inject an STT final transcript (exact mic path)"
+                data-testid="stt-inject-input"
+              />
+              <button type="submit" data-testid="stt-inject">
+                Inject STT
+              </button>
+            </form>
           )}
         </section>
 

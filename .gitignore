@@ -8,3 +8,5 @@ dist/
 data/piper-voices/
 dist-sim/
 .playwright-mcp/
+*.db-shm
+*.db-wal

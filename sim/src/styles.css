@@ -523,3 +523,16 @@ button:disabled { opacity: 0.45; cursor: default; }
   text-align: center;
   margin: 0;
 }
+.voice-debug {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: none;
+  opacity: 0.8;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 6px 10px;
+}
+.voice-debug input[type="text"] { flex: 1; }
+.voice-debug button { flex: none; }
+.voice-debug .voice-notice { white-space: nowrap; flex: none; }
