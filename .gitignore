@@ -4,3 +4,7 @@ node_modules/
 dist/
 *.db
 *.sqlite
+.piper-venv/
+data/piper-voices/
+dist-sim/
+.playwright-mcp/

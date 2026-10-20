@@ -68,8 +68,9 @@ export function ToolInspector({
             </ul>
           )}
           <p className="inspector-footnote">
-            Voice and text travel the same MCP path — this inspector shows the real JSON-RPC
-            under both. Audio I/O via browser Web Speech API (not Alexa's own ASR/TTS).
+            The voice layer simulates Alexa+'s device-side ASR/TTS — the MCP server receives
+            text, exactly like a real Alexa+ add-on. Voice and text travel the same MCP path;
+            this inspector shows the real JSON-RPC under both.
           </p>
         </div>
       )}

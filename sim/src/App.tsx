@@ -10,6 +10,9 @@ import { SalaClient } from "./mcp/client";
 import type { WireEvent } from "./mcp/wireLog";
 import type { EndSessionResult, SessionRecord } from "./mcp/types";
 import { chatRequestArgs, convReducer, initialConv } from "./state/conversation";
+import { micEnabled, voiceNext, VoiceEvent, VoiceState } from "./state/voiceMachine";
+import { localeFor, startStt, sttSupported, SttHandle } from "./voice/stt";
+import { cancelSpeech, DEFAULT_PIPER_URL, speak, TtsBackend } from "./voice/tts";
 import { Orb, OrbState } from "./components/Orb";
 import { ConversationPane } from "./components/ConversationPane";
 import { Composer } from "./components/Composer";
@@ -30,6 +33,14 @@ function errMsg(err: unknown): string {
 
 export default function App() {
   const mcpUrl = useMemo(() => mcpUrlFromLocation(), []);
+  const piperUrl = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? DEFAULT_PIPER_URL
+        : (new URLSearchParams(window.location.search).get("tts") ?? DEFAULT_PIPER_URL),
+    [],
+  );
+  const sttOk = useMemo(() => sttSupported(), []);
   const [conn, setConn] = useState<Conn>({ status: "connecting" });
   const clientRef = useRef<SalaClient | null>(null);
 
@@ -49,6 +60,14 @@ export default function App() {
   const [sideTab, setSideTab] = useState<"review" | "sessions">("review");
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [ending, setEnding] = useState(false);
+
+  // ---- voice mode: half-duplex, TTS-gated mic (state machine is pure logic)
+  const [voice, setVoice] = useState<VoiceState>("idle");
+  const [interim, setInterim] = useState<string | null>(null);
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
+  const [ttsBackend, setTtsBackend] = useState<TtsBackend | null>(null);
+  const sttHandleRef = useRef<SttHandle | null>(null);
+  const voiceEvent = useCallback((e: VoiceEvent) => setVoice((v) => voiceNext(v, e)), []);
 
   // ---- connect to the MCP server on mount
   useEffect(() => {
@@ -104,7 +123,7 @@ export default function App() {
 
   // ---- actions
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, mode: "text" | "voice" = "text") => {
       const client = clientRef.current;
       if (!client || conn.status !== "ready") return;
       dispatch({ type: "SEND", text, ts: Date.now() });
@@ -114,12 +133,65 @@ export default function App() {
         );
         sessionRef.current = result.sessionId;
         dispatch({ type: "REPLY", result, ts: Date.now() });
+        if (mode === "voice") {
+          // half-duplex: speak the reply, gate the mic until TTS finishes
+          voiceEvent({ type: "REPLY_READY" });
+          void speak(
+            result.reply,
+            language,
+            {
+              onStart: setTtsBackend,
+              onEnd: () => voiceEvent({ type: "TTS_DONE" }),
+              onUnavailable: (reason) => {
+                setVoiceNotice(reason);
+                voiceEvent({ type: "TTS_UNAVAILABLE" });
+              },
+            },
+            piperUrl,
+          );
+        }
       } catch (err) {
         dispatch({ type: "FAIL", error: `chat failed: ${errMsg(err)}` });
+        if (mode === "voice") voiceEvent({ type: "CHAT_ERROR" });
       }
     },
-    [conn.status, language],
+    [conn.status, language, piperUrl, voiceEvent],
   );
+
+  const micToggle = useCallback(() => {
+    if (voice === "listening") {
+      sttHandleRef.current?.stop();
+      sttHandleRef.current = null;
+      setInterim(null);
+      voiceEvent({ type: "MIC_OFF" });
+      return;
+    }
+    if (!micEnabled(voice, sttOk, conv.sending || ending)) return;
+    setVoiceNotice(null);
+    voiceEvent({ type: "MIC_ON" });
+    const handle = startStt(localeFor(language), {
+      onInterim: (t) => setInterim(t),
+      onFinal: (t) => {
+        sttHandleRef.current = null;
+        setInterim(null);
+        voiceEvent({ type: "STT_FINAL" });
+        void send(t, "voice");
+      },
+      onFail: (msg) => {
+        sttHandleRef.current = null;
+        setInterim(null);
+        setVoiceNotice(msg);
+        voiceEvent({ type: "STT_FAIL" });
+      },
+      onEmpty: () => {
+        sttHandleRef.current = null;
+        setInterim(null);
+        setVoiceNotice("Didn't catch anything — tap the mic again, or just type.");
+        voiceEvent({ type: "STT_FAIL" });
+      },
+    });
+    sttHandleRef.current = handle;
+  }, [voice, sttOk, conv.sending, ending, language, send, voiceEvent]);
 
   const logActivity = useCallback(
     async (text: string) => {
@@ -134,6 +206,10 @@ export default function App() {
     const client = clientRef.current;
     const sid = sessionRef.current;
     if (!client || !sid || ending) return;
+    cancelSpeech();
+    sttHandleRef.current?.stop();
+    sttHandleRef.current = null;
+    setInterim(null);
     setEnding(true);
     try {
       const result = await client.endSession({ sessionId: sid });
@@ -152,13 +228,28 @@ export default function App() {
   const changeLanguage = useCallback((code: LanguageCode) => {
     // targetLanguage is per-session honest: switching clears the live session
     // (ended sessions stay in Past sessions with their stored language).
+    cancelSpeech();
+    sttHandleRef.current?.stop();
+    sttHandleRef.current = null;
+    setInterim(null);
+    setVoice("idle");
     sessionRef.current = null;
     setReviewResult(null);
     dispatch({ type: "CLEAR" });
     setLanguage(code);
   }, []);
 
-  const orbState: OrbState = conv.sending || ending ? "thinking" : "idle";
+  // cleanup on unmount
+  useEffect(() => () => cancelSpeech(), []);
+
+  const orbState: OrbState =
+    voice === "listening"
+      ? "listening"
+      : voice === "speaking"
+        ? "speaking"
+        : conv.sending || ending
+          ? "thinking"
+          : "idle";
   const ready = conn.status === "ready";
 
   return (
@@ -196,7 +287,12 @@ export default function App() {
 
       <main className="layout">
         <section className="chat-column">
-          <ConversationPane turns={conv.turns} sending={conv.sending || ending} orbState={orbState} />
+          <ConversationPane
+            turns={conv.turns}
+            sending={conv.sending || ending}
+            orbState={orbState}
+            interimTranscript={voice === "listening" ? interim : null}
+          />
           {conv.error && (
             <div className="banner banner-error" role="alert" data-testid="conv-error">
               {conv.error}
@@ -205,12 +301,31 @@ export default function App() {
           <ActivityBar onLog={logActivity} disabled={!ready || conv.sending} />
           <div className="composer-row">
             <Composer
-              onSend={send}
+              onSend={(t) => void send(t, "text")}
               disabled={!ready || conv.sending || ending}
               placeholder={
                 conv.sessionEnded
                   ? "Session ended — type to start a new conversation…"
                   : `Talk to ${PRODUCT_NAME}…`
+              }
+              micButton={
+                sttOk ? (
+                  <button
+                    type="button"
+                    className={voice === "listening" ? "mic-button mic-listening" : "mic-button"}
+                    onClick={micToggle}
+                    disabled={!ready || !micEnabled(voice, sttOk, conv.sending || ending)}
+                    data-testid="mic-button"
+                    aria-label={voice === "listening" ? "Stop listening" : `Speak to ${PRODUCT_NAME}`}
+                    title={
+                      voice === "listening"
+                        ? "Stop listening"
+                        : "Voice turn (half-duplex): the mic re-arms after Sala finishes speaking"
+                    }
+                  >
+                    {voice === "listening" ? "■" : "🎙"}
+                  </button>
+                ) : undefined
               }
             />
             <button
@@ -223,6 +338,13 @@ export default function App() {
               {ending ? "Generating review…" : "End session"}
             </button>
           </div>
+          {(!sttOk || voiceNotice) && (
+            <p className="voice-notice" data-testid="voice-notice" role="status">
+              {!sttOk
+                ? "Voice input isn't available in this browser (no Web Speech API) — the text path always works."
+                : voiceNotice}
+            </p>
+          )}
         </section>
 
         <aside className="side-column">
@@ -260,7 +382,10 @@ export default function App() {
       <ToolInspector events={wire} open={inspectorOpen} onToggle={() => setInspectorOpen((o) => !o)} />
 
       <footer className="footer-note">
-        {PRODUCT_NAME} (working name) · {SIMULATION_LABEL} · MCP: {mcpUrl}
+        {PRODUCT_NAME} (working name) · {SIMULATION_LABEL} · voice I/O:{" "}
+        {ttsBackend?.kind === "piper" ? ttsBackend.voiceLabel : "browser Web Speech API"} — the
+        voice layer simulates Alexa+'s device-side ASR/TTS; the MCP server receives text, exactly
+        like a real Alexa+ add-on · MCP: {mcpUrl}
       </footer>
     </div>
   );
