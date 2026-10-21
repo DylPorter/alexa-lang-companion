@@ -162,8 +162,8 @@ non-empty value, or do not export empty keys.
 ## Amazon Bedrock (@aws-sdk/client-bedrock-runtime)
 
 **Which tools, for what.** The first-class production LLM backend (`BedrockLLM`, converse API,
-default model `anthropic.claude-sonnet-4-5-20250929-v1:0`) and our AWS Builder mini-challenge
-evidence.
+default model `us.anthropic.claude-sonnet-4-5-20250929-v1:0`, the US geo inference profile) and
+our AWS Builder mini-challenge evidence.
 
 **What worked well.** So far, the shape of it. The typed converse client compiles cleanly
 against our one-method LLM interface, and the selection chain (explicit `SALA_LLM`, else AWS

@@ -85,8 +85,17 @@ tools."*
 
 ## Human step — gates AWS Builder only
 
-**Dylan's AWS Bedrock enablement** (IAM user, model access for
-`anthropic.claude-sonnet-4-5-20250929-v1:0`, region, env flip, 30 s smoke via `npm run smoke`).
+**Dylan's AWS Bedrock enablement** (corrected 10-21 from the AWS docs — three parts, not one):
+1. **Anthropic use-case form (FTU)**, once per account: Bedrock console → providers → Anthropic,
+   or `aws bedrock put-use-case-for-model-access`. Until it's filed, invokes return 404
+   `FTUFormNotFilled`. Check with `aws bedrock get-foundation-model-availability`.
+2. **Invoke model via the US geo inference PROFILE** `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
+   — Sonnet 4.5 has no In-Region runtime endpoint, so the bare foundation-model id is not
+   invocable. The IAM policy must allow BOTH the profile ARN and the underlying foundation-model
+   ARNs in us-east-1/us-east-2/us-west-2 (profile-only = AccessDeniedException).
+3. IAM user(s) + env flip + 30 s smoke via `npm run smoke`. Hand Alan **STS session** creds
+   (`get-session-token`, ≤36 h, three vars incl. `AWS_SESSION_TOKEN`), not a long-lived key.
+   Whole demo workload estimated ≈US$0.75 at $3/$15 per MTok; Budgets alert on service=Bedrock.
 Everything else is built and proxy-proven. The demo video does NOT depend on this step: the
 video runs on the proxy backend, which is a supported configuration.
 

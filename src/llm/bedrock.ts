@@ -4,9 +4,19 @@
  * mini-challenge evidence, not an optional extra.
  *
  * Same LLM protocol shape as firetv-factcheck's backend (author's own in-window
- * code, clean-room reimplementation): model id from BEDROCK_MODEL
- * (default anthropic.claude-sonnet-4-5-20250929-v1:0), region from
- * AWS_DEFAULT_REGION / AWS_REGION / awsRegion. Credentials come from the
+ * code, clean-room reimplementation): model id from BEDROCK_MODEL, region from
+ * AWS_DEFAULT_REGION / AWS_REGION / awsRegion.
+ *
+ * The default is the US cross-region inference PROFILE id, not the bare
+ * foundation-model id: Claude Sonnet 4.5 has no In-Region bedrock-runtime
+ * endpoint in any region (per the model card's Programmatic Access table,
+ * "In-Region endpoint URL: N/A"), so the bare anthropic.claude-sonnet-4-5-*
+ * id is not invocable and the geo profile is the supported way to call it.
+ * Profiles are passed to Converse as modelId directly. Verified against
+ * docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md
+ * on 2026-10-21.
+ *
+ * Credentials come from the
  * standard AWS SDK chain (env vars / gitignored .env loaded by src/config.ts /
  * instance profile) and are NEVER logged or printed.
  *
@@ -17,7 +27,9 @@
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { ChatMessage, LLM, maxTokensFor } from "./types.js";
 
-export const DEFAULT_BEDROCK_MODEL = "anthropic.claude-sonnet-4-5-20250929-v1:0";
+/** US geo inference profile for Claude Sonnet 4.5 — see header: the bare
+ *  foundation-model id has no In-Region endpoint and is not invocable. */
+export const DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
 export class BedrockLLM implements LLM {
   readonly name = "bedrock" as const;

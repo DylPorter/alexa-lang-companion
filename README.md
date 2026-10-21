@@ -123,7 +123,9 @@ validated token subject. No schema change needed. See `src/config.ts`.
   dev and demo loop runs here.
 - `BedrockLLM` — first-class core backend via `@aws-sdk/client-bedrock-runtime` converse API.
   This is the AWS Builder mini-challenge evidence, not an optional extra. Default model
-  `anthropic.claude-sonnet-4-5-20250929-v1:0` (`BEDROCK_MODEL`).
+  `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (`BEDROCK_MODEL`) — the US cross-region
+  inference profile, because Sonnet 4.5 exposes no In-Region runtime endpoint and the bare
+  foundation-model id is not invocable.
 
 Selection: explicit `SALA_LLM=echo|proxy|bedrock`, else AWS creds present → bedrock, else
 `ANTHROPIC_BASE_URL` → proxy, else echo. The review extractor's LLM pass enhances the
@@ -199,8 +201,13 @@ in PowerShell.
   Optional `SALA_MODEL` for the model id.
 - Bedrock mode: `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION`, optional
   `BEDROCK_MODEL`.
+- If Dylan sends **session** credentials instead of long-lived keys (he should, they expire on
+  their own) there is a third value, `AWS_SESSION_TOKEN`, and you must export all three. The
+  SDK's default credential chain reads it. Omit it and every call fails with a 403 that looks like a
+  permissions problem but is actually a missing token.
 
-Values come from Dylan privately. Never commit them. `.env` is gitignored, and a gitignored
+Values come from Dylan privately, out of band (not in a repo, not in an issue, not in a
+screenshot). Never commit them. `.env` is gitignored, and a gitignored
 `.env` file in the repo root is loaded automatically if you prefer that over shell exports.
 
 **Voice per OS.**
