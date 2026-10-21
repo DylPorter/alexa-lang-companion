@@ -148,9 +148,20 @@ async function main(): Promise<void> {
   if (hasAwsEnvCreds()) {
     // Report which credential shape resolved, never the value.
     const probe = new BedrockLLM();
+    const bearer = Boolean(process.env.AWS_BEARER_TOKEN_BEDROCK);
+    const keyPair = Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
     console.log(
-      `=== bedrock creds: ${process.env.AWS_BEARER_TOKEN_BEDROCK ? "API key (bearer)" : "access-key pair"} · model ${probe.modelId} · region ${probe.region} ===`,
+      `=== bedrock creds: ${bearer ? "API key (bearer)" : keyPair ? "access-key pair (SigV4)" : "?"} · model ${probe.modelId} · region ${probe.region} ===`,
     );
+    if (bearer && keyPair) {
+      // The SDK's auth-scheme preference resolver picks bearer whenever
+      // AWS_BEARER_TOKEN_BEDROCK is set, so a leftover line silently outranks the
+      // access keys. Comment it out rather than being surprised by a bearer-only
+      // SCP deny that has nothing to do with the keys you just made.
+      console.log(
+        "!!! both credential shapes are set — bearer WINS. Comment out the unused one.",
+      );
+    }
     ranAny = true;
     if (!(await runBackend("bedrock", new BedrockLLM()))) failed.push("bedrock");
   } else {
