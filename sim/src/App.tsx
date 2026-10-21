@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import {
   healthUrlFor,
   mcpUrlFromLocation,
+  DEVICE_STATE_COPY,
   PRODUCT_NAME,
   SIMULATION_LABEL,
   LanguageCode,
@@ -10,6 +11,7 @@ import { SalaClient } from "./mcp/client";
 import type { WireEvent } from "./mcp/wireLog";
 import type { EndSessionResult, SessionRecord } from "./mcp/types";
 import { chatRequestArgs, convReducer, initialConv } from "./state/conversation";
+import { isDeviceMode, isModeToggleKey } from "./state/presentation";
 import { micEnabled, voiceNext, VoiceEvent, VoiceState } from "./state/voiceMachine";
 import { localeFor, startStt, sttSupported, SttHandle } from "./voice/stt";
 import { cancelSpeech, DEFAULT_PIPER_URL, speak, TtsBackend } from "./voice/tts";
@@ -70,8 +72,23 @@ export default function App() {
   const [sessionsErr, setSessionsErr] = useState<string | null>(null);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sideTab, setSideTab] = useState<"review" | "sessions">("review");
-  const [inspectorOpen, setInspectorOpen] = useState(true);
+  /**
+   * Presentation mode (SPEC: the product is a speaker, the sim is the only
+   * permitted surface). Device mode starts with the admin drawers shut so the
+   * screen reads as a living-room product; `?device=0` or the `d` key brings the
+   * full console back, including the wire inspector for the runtime-evidence beat.
+   */
+  const [device, setDevice] = useState(() => isDeviceMode());
+  const [inspectorOpen, setInspectorOpen] = useState(() => !isDeviceMode());
   const [ending, setEnding] = useState(false);
+
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (isModeToggleKey(ev)) setDevice((d) => !d);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // ---- voice mode: half-duplex, TTS-gated mic (state machine is pure logic)
   const [voice, setVoice] = useState<VoiceState>("idle");
@@ -276,7 +293,7 @@ export default function App() {
   const ready = conn.status === "ready";
 
   return (
-    <div className="app">
+    <div className={`app${device ? " app-device" : ""}`} data-testid="app" data-mode={device ? "device" : "console"}>
       <header className="topbar">
         <div className="brand">
           <Orb state={orbState} size="small" />
@@ -310,6 +327,14 @@ export default function App() {
 
       <main className="layout">
         <section className="chat-column">
+          {device && (
+            // The presence orb is what a real Alexa device shows; in device mode it
+            // leads the frame instead of sitting in a small brand slot.
+            <div className="device-orb" data-testid="device-orb" aria-hidden="true">
+              <Orb state={orbState} size="large" />
+              <p className="device-state">{DEVICE_STATE_COPY[orbState]}</p>
+            </div>
+          )}
           <ConversationPane
             turns={conv.turns}
             sending={conv.sending || ending}
@@ -322,6 +347,13 @@ export default function App() {
             </div>
           )}
           <ActivityBar onLog={logActivity} disabled={!ready || conv.sending} />
+          {device && reviewResult && (
+            // Device mode puts the generated review where a real add-on would put a
+            // card: in the conversation, not in a side pane (README: the MCP Apps path).
+            <section className="device-review" data-testid="device-review" aria-label="Your review">
+              <ReviewPanel result={reviewResult} />
+            </section>
+          )}
           <div className="composer-row">
             <Composer
               onSend={(t) => void send(t, "text")}
@@ -397,6 +429,8 @@ export default function App() {
           )}
         </section>
 
+        {/* Device mode hides the admin column entirely; `d` brings it back. */}
+        {!device && (
         <aside className="side-column">
           <nav className="side-tabs" aria-label="Panels">
             <button
@@ -427,6 +461,7 @@ export default function App() {
             )}
           </div>
         </aside>
+        )}
       </main>
 
       <ToolInspector events={wire} open={inspectorOpen} onToggle={() => setInspectorOpen((o) => !o)} />

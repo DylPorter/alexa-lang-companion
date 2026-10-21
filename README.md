@@ -148,6 +148,26 @@ mic re-arms only after speech finishes. STT uses the browser Web Speech API. TTS
 voices where they exist and a local Piper neural TTS server (`scripts/piper-tts-server.mjs`,
 loopback-only) where they don't, which is the Linux/Chromium reality.
 
+### Presentation modes: `?device=1` and the `d` key
+
+The product is a speaker in a living room, so the sim has two framings of the same running
+system. Open `?device=1` for the **device view** — presence orb large and top-anchored,
+conversation full width, review rendered inline in the conversation flow (which is what the
+production path, an MCP Apps card in the Alexa+ response, will actually look like), and the admin
+column not rendered at all. Press `d` to switch either way without a reload, so the change can
+happen live on camera. `?device=0` (or no param) is the **console view**: admin column, review and
+past-session panes, everything.
+
+This is emphasis, not a second app. Same MCP client, same server, same five tools, same protocol
+negotiation, and the "Simulated Alexa+ experience" label stays visible in both modes — the rules
+require the simulation to be shown clearly, and a presentation mode that hid it would be a
+different product, not a prettier one. The `d` shortcut deliberately does nothing while focus is in
+a text field, so typing "dashboard" can't flicker the frame mid-take.
+
+For the video we record the beats in the device view and cut to the console view for one deliberate
+shot of the wire inspector, because that panel is the evidence that the required technology is
+called at runtime rather than just imported.
+
 The collapsible **MCP tool-call inspector** at the bottom shows the verbatim JSON-RPC wire
 traffic under both text and voice turns. One row is expected and not an error: the
 `GET → 405` entry per connect is the SDK client's spec-optional SSE-listen probe against our

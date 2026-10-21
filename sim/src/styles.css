@@ -540,3 +540,44 @@ button:disabled { opacity: 0.45; cursor: default; }
 .voice-debug input[type="text"] { flex: 1; }
 .voice-debug button { flex: none; }
 .voice-debug .voice-notice { white-space: nowrap; flex: none; }
+
+/* ---------- device presentation mode (?device=1, or press `d`) ---------- */
+/* The product is a speaker in a living room, so in this mode the frame leads with
+   presence and the review card sits in the conversation flow. Same DOM, same MCP
+   client, same honesty label — only emphasis changes, and the admin column is
+   conditionally not rendered at all (see App.tsx). */
+.app-device .layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-device .device-orb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 2px;
+}
+
+.app-device .device-state {
+  margin: 0;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--muted, #8b93a7);
+}
+
+/* Full-width review card instead of a narrow side pane. */
+.app-device .device-review {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 12px 14px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+/* Slightly bigger chat type so a recorded 1080p frame reads like a screen across
+   a room rather than like a dashboard. */
+.app-device .bubble-text {
+  font-size: 1.06rem;
+  line-height: 1.5;
+}

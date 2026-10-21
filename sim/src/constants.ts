@@ -35,3 +35,16 @@ export type LanguageCode = (typeof LANGUAGES)[number]["code"];
 
 /** Honesty label required by the hackathon rules — always visible. */
 export const SIMULATION_LABEL = "Simulated Alexa+ experience";
+
+/**
+ * Device-mode status line under the presence orb: what the speaker would be
+ * doing right now. Copy stays plain-spoken and never claims Amazon's own ASR/TTS
+ * (the SPEC's real-Alexa+ mapping: the MCP boundary receives text, the sim stands
+ * in for the device-side voice stack).
+ */
+export const DEVICE_STATE_COPY: Record<"idle" | "listening" | "thinking" | "speaking", string> = {
+  idle: "say hi to start",
+  listening: "listening…",
+  thinking: "thinking…",
+  speaking: "speaking…",
+};

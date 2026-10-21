@@ -4,11 +4,24 @@ Owner: **Alan** records, cuts, publishes (public YouTube/Vimeo, link in the Devp
 Dylan's machine hosts the demo. Every review and every reply on camera is extracted live from
 the conversation actually had on camera. Nothing staged, nothing scripted into the server.
 
-Backend note for every beat: **the whole video runs on the proxy LLM backend
-(`SALA_LLM=proxy`). No beat requires Bedrock.** Bedrock is the AWS Builder mini-challenge
-evidence and lives in the form text, not the video. If Bedrock happens to be enabled by
-recording day, swapping `SALA_LLM=bedrock` changes nothing on screen except the `/health`
-footer word.
+Backend note for every beat: **the whole video runs on one live LLM backend and no beat requires
+Bedrock.** Bedrock is the AWS Builder mini-challenge evidence and can live in the form text alone.
+Whatever is live at record time, `/health` must confirm it before the first take — the backend word
+in the footer and in `demo.sh`'s banner is the only on-screen difference.
+
+**Record in the device view: `?device=1`** (see README → Presentation modes). The product is a
+speaker in a living room, so the frame should read that way — orb leading, conversation full width,
+the review appearing inline as a card instead of in a side pane. Press `d` to flip to the console
+view for **Beat 4b** below (the one deliberate wire-inspector shot), then `d` again to come back.
+The "Simulated Alexa+ experience" label stays on screen in both modes; never crop it out.
+
+### Beat 4b — the runtime-evidence cut (12 s, inside Beat 4's window)
+
+Cut to console view (`d`), scroll the inspector so a real `tools/call` row is visible with its
+JSON-RPC payload, one line of VO: *"that conversation is not a mocked chat — it is a live MCP
+client calling a self-hosted server over Streamable HTTP, protocol 2025-11-25."* Cut back to device
+view. This beat exists because the rules judge whether the required technology is actually called
+at runtime, and an inspector frame answers that in a way narration cannot.
 
 ## Timeline (180 s budget)
 
@@ -113,9 +126,12 @@ after 2:40.
    minutes earlier) or wipe and re-seed. Either is fine. Staging fake history is not.
 2. **Boot:** `PORT=3100 SIM_PORT=5199 npm run demo:voice`
    (3000 and 5173 belong to other processes on this machine; `demo:voice` also fails loudly if
-   the Piper fallback is missing, which is what we want on Linux). Backend: proxy, from the
-   gitignored `.env`. Confirm `curl -s http://127.0.0.1:3100/health` says `proxy` before
-   recording.
+   the Piper fallback is missing, which is what we want on Linux). The backend comes from the
+   gitignored `.env` (`SALA_LLM`), and `demo.sh` now prints which one it resolved — treat that
+   banner as the pre-flight. Confirm `curl -s http://127.0.0.1:3100/health` agrees before
+   recording, then open `http://localhost:5199/?device=1` for the takes.
+   If the banner and `/health` disagree, stop: you are looking at a different backend than the
+   one you think you are recording, and `demo.sh`'s old default used to cause exactly that.
 3. **Browser:** Chrome or Edge, windowed at 1920x1080, dark theme as shipped. On this Linux box
    TTS comes from local Piper (footer labels it honestly); on a Mac/Windows machine the browser
    system voices take over automatically and Piper stays idle.
