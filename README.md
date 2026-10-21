@@ -123,9 +123,11 @@ validated token subject. No schema change needed. See `src/config.ts`.
   dev and demo loop runs here.
 - `BedrockLLM` — first-class core backend via `@aws-sdk/client-bedrock-runtime` converse API.
   This is the AWS Builder mini-challenge evidence, not an optional extra. Default model
-  `us.anthropic.claude-sonnet-4-5-20250929-v1:0` (`BEDROCK_MODEL`) — the US cross-region
-  inference profile, because Sonnet 4.5 exposes no In-Region runtime endpoint and the bare
-  foundation-model id is not invocable.
+  `amazon.nova-lite-v1:0` (`BEDROCK_MODEL`) — bare id, because Nova is In-Region in us-east-1
+  (the `us.` geo-profile prefix is a Claude/Llama requirement, not a universal one). Chosen over
+  Claude on cost and onboarding: Nova Lite is ~$0.06/M input and ~$0.24/M output, so the entire
+  demo workload is about **US$0.013**, and Claude additionally gates every first invoke behind a
+  one-time Anthropic use-case form.
 
 Selection: explicit `SALA_LLM=echo|proxy|bedrock`, else AWS creds present → bedrock, else
 `ANTHROPIC_BASE_URL` → proxy, else echo. The review extractor's LLM pass enhances the

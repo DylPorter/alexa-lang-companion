@@ -30,9 +30,11 @@ across sessions."
    └─ LLM backend: swappable Echo/Proxy/Bedrock classes (same shape proven in
         firetv-factcheck/backend/verify_agent.py — Dylan's own in-window code, clean-room OK)
         dev = qwen proxy (ANTHROPIC_BASE_URL); **Bedrock = FIRST-CLASS core backend
-        (steered 10-20): the submission demo runs on Bedrock (Claude via converse API,
+        (steered 10-20): the submission demo runs on Bedrock via converse API,
         @aws-sdk/client-bedrock-runtime) — it is the AWS Builder mini-challenge evidence,
-        not an optional extra.** Selection: explicit SALA_LLM=bedrock|proxy|echo, else
+        not an optional extra. Model steered 10-21 by Dylan to Amazon Nova Lite (bare
+        In-Region id amazon.nova-lite-v1:0) rather than Claude: cost and onboarding, and the
+        Bedrock service is the Builder claim, not any one vendor.** Selection: explicit SALA_LLM=bedrock|proxy|echo, else
         AWS creds present → bedrock, else ANTHROPIC_BASE_URL → proxy, else echo
 ```
 

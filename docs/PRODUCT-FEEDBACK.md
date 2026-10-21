@@ -162,23 +162,58 @@ non-empty value, or do not export empty keys.
 ## Amazon Bedrock (@aws-sdk/client-bedrock-runtime)
 
 **Which tools, for what.** The first-class production LLM backend (`BedrockLLM`, converse API,
-default model `us.anthropic.claude-sonnet-4-5-20250929-v1:0`, the US geo inference profile) and
-our AWS Builder mini-challenge evidence.
+default model `amazon.nova-lite-v1:0`) and our AWS Builder mini-challenge evidence.
 
 **What worked well.** So far, the shape of it. The typed converse client compiles cleanly
 against our one-method LLM interface, and the selection chain (explicit `SALA_LLM`, else AWS
 creds, else proxy, else echo) means the same server binary runs offline in tests, on the proxy
 in dev, and on Bedrock in production with no code change.
 
-**What needs work.** [UPDATE-AFTER-ENABLEMENT: fill from the live smoke. Candidate items to
-confirm or cut: model access enablement latency in the console, region and model-id defaults
-for first-time users, and whether converse stream errors surface with enough context to retry
-safely.] The honest current-state sentence for the form: the integration is complete in code
-and gated in practice, because IAM user creation and model access are human steps we have not
-run yet. Our smoke prints GATED rather than FAILED without creds, on purpose.
+**What needs work.** Four things came out of picking the model, and all four are documentation
+problems rather than SDK problems.
 
-**Zero to hello world.** Blocked on the enablement step above. Our internal checklist estimates
-30 minutes including the first smoke.
+First, the model cards contradict themselves. The Claude Sonnet 4.5 card states "In-Region
+endpoint URL: N/A" in its Programmatic Access table and then uses the bare
+`anthropic.claude-sonnet-4-5-20250929-v1:0` id in its own sample code for us-east-1. A first-time
+reader copies the sample and gets a confusing failure. The availability table is the part to
+trust, and the docs do not say so.
+
+Second, region and lifecycle support is scattered enough that we nearly built on a model our
+account cannot call. Meta Llama 3.3 70B is still listed in the catalog and priced normally, but
+the model-lifecycle page marks it Legacy with "once the Legacy period begins, new customers can't
+use Legacy models". Nothing in the catalog row or the model card says that. We had chosen Llama for
+the multilingual grammar work before we found the sentence, and Cohere Command R had already passed
+EOL. A "you cannot adopt this with a new account" flag on the catalog row would have saved that
+entire detour.
+
+Third, Converse sells one uniform request shape but does not document per-provider parameter
+limits with it. The Nova request schema says temperature is valid from 0.00001 to 1, which means
+`temperature: 0`, the obvious choice for a deterministic JSON extraction call, is rejected. That
+constraint lives in a different doc tree from the Converse API reference, and the Converse page
+lists no per-model parameter ranges at all. We had to find it by reading the Nova schema page.
+
+Fourth, the API key documentation names boto3 as the thing that reads `AWS_BEARER_TOKEN_BEDROCK`.
+We checked the installed JS SDK instead of assuming and it does work, the auth-scheme resolver maps
+`signingName: "bedrock"` to that variable and selects bearer auth automatically. Good behaviour,
+undocumented. Worth stating that all SDKs read it.
+
+The cheap models also have no structured output. `outputConfig.textFormat` is documented, but the
+Nova and Llama cards show Structured Outputs unsupported, so a JSON-extraction call has to be
+validated in application code. Our extractor re-sources every proposed example verbatim from the
+transcript and drops anything invented, then falls back to the deterministic heuristic, so this
+cost us nothing. Flagging it because the next person building a JSON-extracting agent on a cheap
+model will not have that fallback pre-built, and the catalog gives no way to filter for it.
+
+[UPDATE-AFTER-ENABLEMENT: still to fill from the live smoke, the first-invoke Marketplace
+subscription latency, the actual DE and FR grammar quality on Nova Lite, and whether Converse errors
+carry enough context to retry safely.] The honest current-state sentence for the form: the
+integration is complete in code and gated in practice, because the AWS account setup is a human
+step we have not run yet. Our smoke prints GATED rather than FAILED without creds, on purpose.
+
+**Zero to hello world.** Model selection took the longest and it was documentation work, not setup.
+The setup itself looks small now that we know Anthropic is the only provider with a use-case form
+and that the short-term API key covers credentials without any IAM user. Our internal checklist
+estimates 30 minutes including the first smoke.
 
 **Build again?** Yes, pending the live check. Nothing in the SDK has fought us yet.
 

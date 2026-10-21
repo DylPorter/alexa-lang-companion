@@ -85,14 +85,25 @@ tools."*
 
 ## Human step — gates AWS Builder only
 
-**Dylan's AWS Bedrock enablement** (corrected 10-21 from the AWS docs — three parts, not one):
-1. **Anthropic use-case form (FTU)**, once per account: Bedrock console → providers → Anthropic,
-   or `aws bedrock put-use-case-for-model-access`. Until it's filed, invokes return 404
-   `FTUFormNotFilled`. Check with `aws bedrock get-foundation-model-availability`.
-2. **Invoke model via the US geo inference PROFILE** `us.anthropic.claude-sonnet-4-5-20250929-v1:0`
-   — Sonnet 4.5 has no In-Region runtime endpoint, so the bare foundation-model id is not
-   invocable. The IAM policy must allow BOTH the profile ARN and the underlying foundation-model
-   ARNs in us-east-1/us-east-2/us-west-2 (profile-only = AccessDeniedException).
+**Dylan's AWS Bedrock enablement** (corrected 10-21 from the AWS docs):
+1. **Nothing, for Nova.** Verified from the model-access doc: *"Amazon Bedrock starts the
+   subscription for you on the first invocation, so there is no access request to submit"*, and the
+   "Model access" console page *"applies to AWS GovCloud (US)"* only. The one-time use-case form
+   (404 `FTUFormNotFilled` until filed) is **Anthropic-specific** — it is the reason not to default
+   to Claude, and it is why the earlier version of this checklist had a step here. Prerequisites
+   that DO apply to every provider: a valid payment method on the account, and
+   `aws-marketplace:Subscribe|ViewSubscriptions` on the calling identity (the first invoke silently
+   creates a Marketplace subscription; it can take ~15 min to settle).
+2. **Model choice: `amazon.nova-lite-v1:0`, bare id.** Nova is In-Region in us-east-1, so no
+   `us.` profile is needed and no IAM policy ARN gymnastics either (a profile would have required
+   allowing the profile ARN *and* the underlying foundation-model ARNs in us-east-1/2/us-west-2).
+   Rejected alternatives, receipts: Claude Sonnet 4.5 = $3/$15 per MTok **and** no In-Region
+   endpoint (needs the `us.` profile) **and** the Anthropic use-case form; Meta Llama 3.3 70B and
+   3.1 8B are **Legacy** — "once the Legacy period begins, new customers can't use Legacy models",
+   which rules them out on a brand-new account; Cohere Command R/R+ passed EOL 2026-08-19; Titan
+   Text is absent from the current regional-availability catalog.
+   ⚠️ **Nova rejects `temperature: 0`** (documented range 0.00001–1) — the review phase used to send
+   a literal 0. Fixed via `temperatureFor()` since 10-21, pinned by tests.
 3. Credentials + env flip + 30 s smoke via `npm run smoke`. **Preferred shape: a Bedrock API key**
    (console → Bedrock → API keys → *short-term*, ≤12 h) exported as `AWS_BEARER_TOKEN_BEDROCK`.
    One value, self-expiring, Bedrock-scoped by construction, and this SDK's default chain reads it
@@ -101,8 +112,14 @@ tools."*
    GATED. Long-lived IAM access keys are the fallback; if minting temporary ones instead, hand
    **STS session** creds (`get-session-token`, ≤36 h, three vars incl. `AWS_SESSION_TOKEN`) and
    never your own key.
-   Whole demo workload estimated ≈US$0.75 at $3/$15 per MTok. **No hard spend cap exists** — AWS
-   Budgets alerts are free so set one on service=Bedrock anyway, and delete the keys Friday.
+   Whole demo workload ≈**US$0.013** on Nova Lite ($0.06/$0.24 per MTok × ~70 calls at 1.5k in /
+   400 out). Nova Pro ($0.80/$3.20) would run ≈US$0.18 if Lite's DE/FR recasts read weak — still
+   noise against the $100 signup credits, and quality is the thing to optimise here, not price.
+   Quota caveat, doc-verified: Bedrock throttles on **tokens/min**, and *"the quotas that apply to
+   your account might be lower than the default values depending on account age"* — ~133k tokens
+   issued sequentially is far under any floor, but glance at Service Quotas if a call ever 429s.
+   **No hard spend cap exists** — AWS Budgets alerts are free so set one on service=Bedrock anyway,
+   and short-term keys expire on their own.
 Everything else is built and proxy-proven. The demo video does NOT depend on this step, **but note
 there is no `.env` on disk yet at all** — `demo.sh` defaults `SALA_LLM=proxy`, so recording day
 needs a `.env` written first whatever backend is used. A Bedrock-backed video is one env var away

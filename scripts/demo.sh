@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Sala one-command demo entry: MCP server (proxy LLM by default) + web sim.
+# Sala one-command demo entry: MCP server + web sim.
+# Backend default is proxy unless SALA_LLM is set in the shell or in the gitignored .env.
 # The server binds loopback only; the sim origin is sanctioned explicitly via
 # SALA_ALLOWED_ORIGINS (the strict production default is untouched).
 #
@@ -13,7 +14,29 @@ PORT="${PORT:-3000}"
 SIM_PORT="${SIM_PORT:-5173}"
 export PORT
 export SALA_ALLOWED_ORIGINS="${SALA_ALLOWED_ORIGINS:-http://localhost:${SIM_PORT}}"
-export SALA_LLM="${SALA_LLM:-proxy}"
+
+# Backend resolution, highest precedence first: an explicit shell SALA_LLM, then a
+# SALA_LLM line in the gitignored .env, then proxy.
+#
+# demo.sh must NOT export a default when .env carries the value. dotenv never
+# overwrites an existing process.env entry, so `export SALA_LLM=proxy` here silently
+# beats `SALA_LLM=bedrock` in .env and the demo records the wrong backend while
+# looking exactly like the right one. (Caught 10-21 while wiring Bedrock.)
+ENV_LLM=""
+if [ -f "$ROOT/.env" ]; then
+  # `|| true` is load-bearing: set -e + pipefail would otherwise abort the whole
+  # script when .env has no SALA_LLM line (grep exits 1), and a missing line is the
+  # normal teammate cold-run, not an error.
+  ENV_LLM="$( { grep -E '^[[:space:]]*SALA_LLM=' "$ROOT/.env" || true; } | tail -1 | cut -d= -f2- | tr -d '[:space:]' )"
+fi
+if [ -n "${SALA_LLM:-}" ]; then
+  export SALA_LLM
+elif [ -n "$ENV_LLM" ]; then
+  : # leave it unset so the server reads it from .env
+else
+  export SALA_LLM="proxy"
+fi
+BACKEND="${SALA_LLM:-$ENV_LLM}"
 # Tell the sim where THIS server lives (matters whenever PORT != 3000, e.g.
 # PORT=3100 on a machine where 3000 belongs to another process).
 export VITE_MCP_URL="${VITE_MCP_URL:-http://127.0.0.1:${PORT}/mcp}"
@@ -38,6 +61,8 @@ cat <<EOF
 
   Sala — demo runbook
   ─────────────────────────────────────────────────────────────
+     LLM backend: ${BACKEND:-echo} (resolved from shell > .env > proxy default)
+     Confirm it before recording:  curl -s http://127.0.0.1:${PORT}/health
   1. Open the sim:      http://localhost:${SIM_PORT}
      (the sim auto-points at this server via VITE_MCP_URL; ad-hoc override
       with ?mcp=http://host:port/mcp)

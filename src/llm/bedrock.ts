@@ -1,20 +1,26 @@
 /**
  * BedrockLLM — FIRST-CLASS core backend (SPEC steered 10-20): the submission
- * demo runs on Bedrock (Claude via the converse API) — this is the AWS Builder
+ * demo runs on Bedrock via the converse API — this is the AWS Builder
  * mini-challenge evidence, not an optional extra.
  *
  * Same LLM protocol shape as firetv-factcheck's backend (author's own in-window
  * code, clean-room reimplementation): model id from BEDROCK_MODEL, region from
  * AWS_DEFAULT_REGION / AWS_REGION / awsRegion.
  *
- * The default is the US cross-region inference PROFILE id, not the bare
- * foundation-model id: Claude Sonnet 4.5 has no In-Region bedrock-runtime
- * endpoint in any region (per the model card's Programmatic Access table,
- * "In-Region endpoint URL: N/A"), so the bare anthropic.claude-sonnet-4-5-*
- * id is not invocable and the geo profile is the supported way to call it.
- * Profiles are passed to Converse as modelId directly. Verified against
- * docs.aws.amazon.com/bedrock/latest/userguide/models-region-compatibility.md
- * on 2026-10-21.
+ * Model choice (steered 10-21 by the author: not Anthropic — signup credits
+ * should not burn on a hackathon, and Claude additionally requires a one-time
+ * Anthropic use-case form before any invoke). The default is **Amazon Nova
+ * Lite**, which is Active and has an In-Region endpoint in us-east-1, so the
+ * BARE id is correct here and must NOT carry the `us.` geo-profile prefix that
+ * Claude and Llama require. Verified 2026-10-21 against
+ * models-region-compatibility.md + the model cards. Rejected alternatives, with
+ * receipts: Meta Llama 3.3 70B and 3.1 8B are Legacy ("once the Legacy period
+ * begins, new customers can't use Legacy models") and Cohere Command R/R+ are
+ * past EOL, so a new account cannot adopt either; Titan Text is absent from the
+ * current regional-availability catalog.
+ *
+ * Nova also rejects `temperature: 0` (documented range 0.00001–1), which is why
+ * the review phase goes through temperatureFor() rather than a literal 0.
  *
  * Credentials come from the
  * standard AWS SDK chain (env vars / gitignored .env loaded by src/config.ts /
@@ -27,9 +33,23 @@
 import { BedrockRuntimeClient, ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { ChatMessage, LLM, maxTokensFor } from "./types.js";
 
-/** US geo inference profile for Claude Sonnet 4.5 — see header: the bare
- *  foundation-model id has no In-Region endpoint and is not invocable. */
-export const DEFAULT_BEDROCK_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+/** Amazon Nova Lite, bare id — In-Region in us-east-1, so no `us.` profile
+ *  prefix (that is a Claude/Llama requirement, not a universal one). Active
+ *  model, ~$0.06/MTok in and ~$0.24/MTok out: the whole demo workload lands
+ *  around US$0.013. Bedrock is the point for the AWS Builder claim, not Claude. */
+export const DEFAULT_BEDROCK_MODEL = "amazon.nova-lite-v1:0";
+
+/**
+ * Nova rejects temperature 0 (documented range 0.00001–1), so the review
+ * phase's deterministic intent has to be expressed as the floor instead of a
+ * literal. Anything else keeps 0. Checked on the model id rather than a flag
+ * so a future BYOK model does not inherit a silent clamp.
+ */
+export function temperatureFor(phase: "chat" | "review", modelId: string): number {
+  const ideal = phase === "review" ? 0 : 0.7;
+  if (ideal > 0) return ideal;
+  return modelId.includes("nova") ? 0.00001 : ideal;
+}
 
 export class BedrockLLM implements LLM {
   readonly name = "bedrock" as const;
@@ -57,7 +77,7 @@ export class BedrockLLM implements LLM {
         })),
         inferenceConfig: {
           maxTokens: maxTokensFor(phase),
-          temperature: phase === "review" ? 0 : 0.7,
+          temperature: temperatureFor(phase, this.modelId),
         },
       }),
     );
