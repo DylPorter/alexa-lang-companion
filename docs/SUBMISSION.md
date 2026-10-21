@@ -93,11 +93,25 @@ tools."*
    — Sonnet 4.5 has no In-Region runtime endpoint, so the bare foundation-model id is not
    invocable. The IAM policy must allow BOTH the profile ARN and the underlying foundation-model
    ARNs in us-east-1/us-east-2/us-west-2 (profile-only = AccessDeniedException).
-3. IAM user(s) + env flip + 30 s smoke via `npm run smoke`. Hand Alan **STS session** creds
-   (`get-session-token`, ≤36 h, three vars incl. `AWS_SESSION_TOKEN`), not a long-lived key.
-   Whole demo workload estimated ≈US$0.75 at $3/$15 per MTok; Budgets alert on service=Bedrock.
-Everything else is built and proxy-proven. The demo video does NOT depend on this step: the
-video runs on the proxy backend, which is a supported configuration.
+3. Credentials + env flip + 30 s smoke via `npm run smoke`. **Preferred shape: a Bedrock API key**
+   (console → Bedrock → API keys → *short-term*, ≤12 h) exported as `AWS_BEARER_TOKEN_BEDROCK`.
+   One value, self-expiring, Bedrock-scoped by construction, and this SDK's default chain reads it
+   natively (confirmed in `@aws-sdk/core`: `signingName: "bedrock"` → that env key →
+   `["httpBearerAuth"]`). `hasAwsEnvCreds()` accepts it since 10-21, so the smoke stops reporting
+   GATED. Long-lived IAM access keys are the fallback; if minting temporary ones instead, hand
+   **STS session** creds (`get-session-token`, ≤36 h, three vars incl. `AWS_SESSION_TOKEN`) and
+   never your own key.
+   Whole demo workload estimated ≈US$0.75 at $3/$15 per MTok. **No hard spend cap exists** — AWS
+   Budgets alerts are free so set one on service=Bedrock anyway, and delete the keys Friday.
+Everything else is built and proxy-proven. The demo video does NOT depend on this step, **but note
+there is no `.env` on disk yet at all** — `demo.sh` defaults `SALA_LLM=proxy`, so recording day
+needs a `.env` written first whatever backend is used. A Bedrock-backed video is one env var away
+and doubles as the AWS Builder evidence; the demo script's per-beat backend labels then read
+BEDROCK instead of PROXY with no other change.
+
+**Post-hackathon (BYOK):** the public shape is Bedrock as the demo default with proxy/echo as
+bring-your-own-key options. Echo mode is already the zero-secret onboarding path and the backends
+sit behind one interface, so BYOK is a README/docs framing change, not a rebuild.
 
 ## Pre-flight (repo hygiene, before going public)
 

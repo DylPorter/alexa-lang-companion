@@ -201,10 +201,14 @@ in PowerShell.
   Optional `SALA_MODEL` for the model id.
 - Bedrock mode: `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + `AWS_DEFAULT_REGION`, optional
   `BEDROCK_MODEL`.
-- If Dylan sends **session** credentials instead of long-lived keys (he should, they expire on
-  their own) there is a third value, `AWS_SESSION_TOKEN`, and you must export all three. The
-  SDK's default credential chain reads it. Omit it and every call fails with a 403 that looks like a
-  permissions problem but is actually a missing token.
+- Bedrock mode, preferred shape: `AWS_BEARER_TOKEN_BEDROCK` (a Bedrock API key from console →
+  Bedrock → API keys) + `AWS_DEFAULT_REGION`. Dylan will send the **short-term** kind, which
+  expires by itself within 12 hours, so there is nothing to revoke and nothing to leak later.
+  Just one value, exported as-is — the AWS SDK reads that env var and switches to bearer auth on
+  its own.
+- Access-key shape also works (`AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` + session token if
+  the values came from `aws sts get-session-token`, in which case export all three — omitting
+  `AWS_SESSION_TOKEN` fails with a 403 that looks like a permissions problem but is not).
 
 Values come from Dylan privately, out of band (not in a repo, not in an issue, not in a
 screenshot). Never commit them. `.env` is gitignored, and a gitignored

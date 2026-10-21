@@ -68,7 +68,22 @@ export class BedrockLLM implements LLM {
   }
 }
 
-/** True when the standard AWS env-credential pair is present (smoke gating). */
+/**
+ * True when a Bedrock credential is present in the environment (smoke gating +
+ * backend auto-selection). Two accepted shapes:
+ *   1. the standard access-key pair, or
+ *   2. AWS_BEARER_TOKEN_BEDROCK — a Bedrock API key (console → Bedrock → API
+ *      keys). The SDK's default chain picks this up itself: the auth-scheme
+ *      preference resolver returns ["httpBearerAuth"] when
+ *      `AWS_BEARER_TOKEN_${signingName}` is set and this client's signingName
+ *      is "bedrock" (verified in @aws-sdk/core 3.x source, 2026-10-21).
+ * Shape 2 is the one to hand a teammate: short-term keys expire by themselves
+ * (≤12 h) and Bedrock-scoped by construction, so there is no long-lived key on
+ * someone else's machine to remember to revoke.
+ */
 export function hasAwsEnvCreds(): boolean {
-  return Boolean(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY);
+  return Boolean(
+    (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ||
+      process.env.AWS_BEARER_TOKEN_BEDROCK,
+  );
 }
