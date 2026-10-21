@@ -562,17 +562,16 @@ button:disabled { opacity: 0.45; cursor: default; }
   margin: 0;
   font-size: 0.85rem;
   letter-spacing: 0.02em;
-  color: var(--muted, #8b93a7);
+  color: var(--text-dim);
 }
 
-/* Full-width review card instead of a narrow side pane. */
+/* Full-width review card instead of a narrow side pane. Sizing lives in the
+   scroll block at the bottom of this section, deliberately not here. */
 .app-device .device-review {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--panel);
   padding: 12px 14px;
-  max-height: 46vh;
-  overflow-y: auto;
 }
 
 /* Slightly bigger chat type so a recorded 1080p frame reads like a screen across
@@ -580,4 +579,37 @@ button:disabled { opacity: 0.45; cursor: default; }
 .app-device .bubble-text {
   font-size: 1.06rem;
   line-height: 1.5;
+}
+
+/* The review is the payoff shot, so it must never be cut mid-card. At 1080p the
+   card measures ~853px, which does not fit beside a leading orb plus a full
+   conversation, so in device mode the column scrolls, the card renders at its
+   natural height with NO clamp and NO inner scrollbar, and the composer stays
+   pinned at the bottom so the input row never scrolls out of reach. The orb hides
+   itself while a review is open, reclaiming its ~156px band for the card.
+   Verified in-browser 10-21: a 46vh clamp sliced the grammar card in half while
+   the learner's own sentence had scrolled out of view above it. */
+.app-device .chat-column {
+  overflow-y: auto;
+}
+
+/* The conversation keeps its own scroll, bounded so a long transcript cannot push
+   the review off the earth, but it no longer fights the card for the height. */
+.app-device .conversation {
+  flex: 0 0 auto;
+  min-height: 160px;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+
+.app-device .device-review {
+  max-height: none;
+  overflow: visible;
+}
+
+.app-device .composer-row {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, transparent, var(--bg-1) 22%);
 }

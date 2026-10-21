@@ -11,7 +11,7 @@ import { SalaClient } from "./mcp/client";
 import type { WireEvent } from "./mcp/wireLog";
 import type { EndSessionResult, SessionRecord } from "./mcp/types";
 import { chatRequestArgs, convReducer, initialConv } from "./state/conversation";
-import { isDeviceMode, isModeToggleKey } from "./state/presentation";
+import { deviceOrbVisible, isDeviceMode, isModeToggleKey } from "./state/presentation";
 import { micEnabled, voiceNext, VoiceEvent, VoiceState } from "./state/voiceMachine";
 import { localeFor, startStt, sttSupported, SttHandle } from "./voice/stt";
 import { cancelSpeech, DEFAULT_PIPER_URL, speak, TtsBackend } from "./voice/tts";
@@ -327,9 +327,16 @@ export default function App() {
 
       <main className="layout">
         <section className="chat-column">
-          {device && (
-            // The presence orb is what a real Alexa device shows; in device mode it
-            // leads the frame instead of sitting in a small brand slot.
+          {device &&
+            deviceOrbVisible({
+              hasTurns: conv.turns.length > 0,
+              hasReview: reviewResult !== null,
+            }) && (
+            // The presence orb is what a real Alexa device shows, so in device mode it
+            // leads the frame instead of sitting in a small brand slot. Hidden while the
+            // conversation is empty (ConversationPane draws its own centred orb there —
+            // two identical orbs was the opening frame before this guard existed) and
+            // while the review is open, so the payoff card gets its height back.
             <div className="device-orb" data-testid="device-orb" aria-hidden="true">
               <Orb state={orbState} size="large" />
               <p className="device-state">{DEVICE_STATE_COPY[orbState]}</p>

@@ -1,6 +1,14 @@
 // @vitest-environment jsdom
+/**
+ * Device vs console presentation mode, at the level that actually broke in the
+ * browser check on 10-21: the opening frame drew TWO identical large orbs (the
+ * device orb plus ConversationPane's own empty-state orb), and the `d` shortcut
+ * had to be proven safe next to the composer. jsdom renders the app cold — the
+ * MCP connect fails, which is fine: these are layout and keystroke-routing
+ * assertions, not server behaviour.
+ */
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import App from "./App";
 
 afterEach(cleanup);
@@ -10,23 +18,62 @@ function setSearch(query: string) {
   window.history.replaceState({}, "", `/${query}`);
 }
 
-describe("device mode renders", () => {
-  it("hides the admin column and shows the presence orb", async () => {
+const mode = () => screen.getByTestId("app").getAttribute("data-mode");
+
+describe("device mode", () => {
+  it("is selected by ?device=1 and drops the admin column", () => {
     setSearch("?device=1");
     render(<App />);
-    const app = screen.getByTestId("app");
-    expect(app.getAttribute("data-mode")).toBe("device");
-    expect(app.className).toContain("app-device");
-    expect(screen.getByTestId("device-orb")).toBeTruthy();
+    expect(mode()).toBe("device");
     expect(document.querySelector(".side-column")).toBeNull();
-    // the honesty label never disappears, in either mode
-    expect(screen.getByTestId("sim-label").textContent).toMatch(/Simulated Alexa/);
   });
 
-  it("keeps the admin column in console mode", () => {
+  it("shows one presence orb, not two, before the first turn", () => {
+    setSearch("?device=1");
+    render(<App />);
+    // Regression: the device orb stacked on the empty-state orb, so the literal
+    // first frame of the demo showed two identical large orbs. The topbar's small
+    // brand orb is intentional and stays; count the LARGE ones and the main region.
+    expect(screen.queryByTestId("device-orb")).toBeNull();
+    expect(screen.getByTestId("conversation-empty")).toBeTruthy();
+    expect(document.querySelectorAll(".orb-large").length).toBe(1);
+    expect(document.querySelectorAll("main .orb").length).toBe(1);
+  });
+
+  it("keeps the honesty label visible — the rules require the simulation shown", () => {
+    setSearch("?device=1");
+    render(<App />);
+    expect(screen.getByTestId("sim-label").textContent).toMatch(/Simulated Alexa/);
+  });
+});
+
+describe("console mode", () => {
+  it("is the default and keeps the admin column", () => {
     setSearch("");
     render(<App />);
-    expect(screen.getByTestId("app").getAttribute("data-mode")).toBe("console");
+    expect(mode()).toBe("console");
     expect(document.querySelector(".side-column")).not.toBeNull();
+    expect(document.querySelectorAll(".orb-large").length).toBe(1);
+  });
+});
+
+describe("the `d` shortcut", () => {
+  it("flips device to console and back, live", () => {
+    setSearch("?device=1");
+    render(<App />);
+    fireEvent.keyDown(window, { key: "d" });
+    expect(mode()).toBe("console");
+    expect(document.querySelector(".side-column")).not.toBeNull();
+    fireEvent.keyDown(window, { key: "d" });
+    expect(mode()).toBe("device");
+  });
+
+  it("types a real 'd' instead of flipping the frame while the composer has focus", () => {
+    setSearch("?device=1");
+    render(<App />);
+    const input = screen.getByTestId("composer-input");
+    input.focus();
+    fireEvent.keyDown(input, { key: "d" });
+    expect(mode()).toBe("device");
   });
 });

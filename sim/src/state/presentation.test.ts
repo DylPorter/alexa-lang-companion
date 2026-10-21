@@ -4,7 +4,7 @@
  * toggle the frame mid-recording and quietly change the video.
  */
 import { describe, expect, it } from "vitest";
-import { isDeviceMode, isModeToggleKey, modeFromSearch } from "./presentation";
+import { deviceOrbVisible, isDeviceMode, isModeToggleKey, modeFromSearch } from "./presentation";
 
 describe("modeFromSearch", () => {
   it("turns device mode on for the documented values", () => {
@@ -60,5 +60,19 @@ describe("isModeToggleKey", () => {
 
   it("survives a missing event target without throwing", () => {
     expect(isModeToggleKey({ key: "d" })).toBe(true);
+  });
+});
+
+describe("deviceOrbVisible", () => {
+  it("does not draw a second orb over the empty conversation's centred one", () => {
+    expect(deviceOrbVisible({ hasTurns: false, hasReview: false })).toBe(false);
+  });
+
+  it("leads the frame once there is a conversation", () => {
+    expect(deviceOrbVisible({ hasTurns: true, hasReview: false })).toBe(true);
+  });
+
+  it("steps aside for the review card, which needs the height", () => {
+    expect(deviceOrbVisible({ hasTurns: true, hasReview: true })).toBe(false);
   });
 });
