@@ -597,8 +597,8 @@ button:disabled { opacity: 0.45; cursor: default; }
    the review off the earth, but it no longer fights the card for the height. */
 .app-device .conversation {
   flex: 0 0 auto;
-  min-height: 160px;
-  max-height: 38vh;
+  min-height: 140px;
+  max-height: 26vh;
   overflow-y: auto;
 }
 
@@ -607,9 +607,31 @@ button:disabled { opacity: 0.45; cursor: default; }
   overflow: visible;
 }
 
+/* The sticky input row sits ON TOP of scrolling content, so it needs a real
+   backdrop: a transparent one let review text slide behind the box and, at rest,
+   the row covered a grammar card outright (measured in-browser 10-22). */
 .app-device .composer-row {
   position: sticky;
   bottom: 0;
   z-index: 2;
-  background: linear-gradient(180deg, transparent, var(--bg-1) 22%);
+  background: var(--bg-1);
+  border-top: 1px solid var(--line);
+  padding: 12px 0 6px;
+  margin-top: 4px;
 }
+
+/* Fit the payoff shot in one 1080p frame: the card stacks five vocab cards and two
+   grammar cards vertically, which measured 1017px against a 918px column, so the
+   conversation was scrolled out of view above it. Two columns inside the card
+   roughly halves that height and the learner's own turns stay on screen with it. */
+.app-device .vocab-cards,
+.app-device .grammar-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.app-device .review-section {
+  margin-bottom: 14px;
+}
+
