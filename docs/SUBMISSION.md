@@ -70,7 +70,7 @@ tools."*
 
 ## Mini-challenges
 
-- [ ] **AWS Builder ($5k, 1 winner)** — *"Any primary track project that incorporates AWS
+- [x] ~~**AWS Builder ($5k, 1 winner)**~~ **NOT CLAIMED — decision 10-22, Dylan.** — *"Any primary track project that incorporates AWS
   services (Amazon Bedrock, AgentCore, Strands SDK, Kiro Crew, SageMaker, etc.) with documented
   integrations."* Our path: `BedrockLLM` (`src/llm/bedrock.ts`), a first-class core backend using
   `@aws-sdk/client-bedrock-runtime` converse API, documented in README + SPEC.
@@ -156,7 +156,7 @@ sit behind one interface, so BYOK is a README/docs framing change, not a rebuild
 ## Blocking chain + latest-safe dates
 
 ```
-Dylan's AWS enablement ──→ Bedrock live smoke ──→ AWS Builder claim in form (optional branch)
+(dropped 10-22) Dylan's AWS enablement ──→ Bedrock live smoke ──→ AWS Builder claim
 Alan's cold run (README teammate guide) ──→ demo video record (DEMO-SCRIPT.md)
         ──→ edit + public YouTube/Vimeo upload ──→ form link
 Dylan: product feedback markers resolved + friction-log export ──→ form paste
@@ -164,16 +164,18 @@ repo public + MIT visible ──┐
 all of the above ───────────┴──→ SUBMIT before Fri 23 Oct 12:00 PT
 ```
 
-Latest-safe dates (today is Tue 20 Oct):
+Latest-safe dates (today is Wed 22 Oct, and the film session moved to Thursday with Alan):
 
-- **Wed 21 Oct morning:** Dylan demos live for Alan on this machine (DEMO-SCRIPT runbook); Alan
-  cold-runs on his own machine the same day using the README teammate guide (echo first, then
-  proxy creds handed over privately).
-- **Wed 21 Oct evening:** video recorded + cut (end_session latency cut around it).
-- **Thu 22 Oct:** video published public; product feedback final; friction log exported; repo
-  flipped public with MIT visible. One full day of slack.
-- **Fri 23 Oct before 03:00 HKT / Thu 12:00 PT:** form submitted by Alan, Dylan cross-checks the
-  five feedback answers and the repo URL.
+- **Wed 22 Oct (today):** Alan accepts the invite, clones, cold-runs in echo mode on his own
+  machine (zero secrets, that is the documented path). Dylan finalises Product Feedback, the friction
+  log export and the track/mini-challenge answers. Backend for recording is the proxy, already proven
+  from the gitignored `.env` (real recast, `memoryReferenced: true`, `extractionPath: llm`).
+- **Thu 23 Oct:** Dylan + Alan meet and film (device view, Beat 4b inspector cut, `end_session`
+  cut-around). Edit and upload the video public on YouTube/Vimeo the same day, because the form takes
+  a *public* link and an unlisted upload is not a submission.
+- **Thu 23 Oct / Fri 24 Oct before 03:00 HKT (Fri 12:00 PT):** flip the repo public with MIT visible,
+  Alan submits the form, Dylan cross-checks the five feedback answers, the friction entries and the
+  repo URL. Slack is roughly 24-30 hours, not a day, so anything that can be finished today should be.
 
 The two chains are independent until the form: the video needs no AWS step, and Bedrock can go
 live after the video without touching it.
