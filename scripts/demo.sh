@@ -57,6 +57,18 @@ elif [ -n "${REQUIRE_VOICE:-}" ]; then
   exit 1
 fi
 
+# Pre-flight: if either port is taken, the server dies on EADDRINUSE while the vite sim
+# keeps serving HTTP 200 next to a dead backend — a convincing-but-dead demo, which is
+# exactly what a clean-clone test hit on 10-22. Fail before booting anything instead.
+for P in "$PORT" "$SIM_PORT"; do
+  if ss -ltnH 2>/dev/null | awk '{print $4}' | grep -qE "[:.]${P}$"; then
+    echo "demo: port ${P} is already in use by another process." >&2
+    echo "      Free it, or run the demo elsewhere, e.g.:" >&2
+    echo "        PORT=3100 SIM_PORT=5199 npm run demo" >&2
+    exit 1
+  fi
+done
+
 cat <<EOF
 
   Sala — demo runbook
@@ -78,4 +90,4 @@ cat <<EOF
 
 EOF
 
-npx concurrently -n "$NAMES" -c "$COLORS" "${CMDS[@]}"
+npx concurrently --kill-others -n "$NAMES" -c "$COLORS" "${CMDS[@]}"
