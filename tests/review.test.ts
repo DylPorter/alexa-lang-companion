@@ -3,7 +3,7 @@
  * in TWO languages — English ESL + French — proving extraction is
  * language-agnostic and every review item quotes the learner's OWN sentences.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   detectMistakes,
   extractJsonObject,
@@ -194,6 +194,57 @@ describe("LLM enhancement path — validation is the contract", () => {
     const { review, path } = await extractReview(ESL_ENGLISH_FIXTURE, CFG_EN, broken);
     expect(path).toBe("heuristic");
     expect(review.grammar.length).toBeGreaterThan(0);
+  });
+
+  // The proxy answers 200 with empty content sometimes (observed 2026-10-20), and an
+  // unparseable review pass used to fall back silently. A silent fallback on recording
+  // day is the worst case: the panel just looks weaker and nothing says why.
+  const VALID_EN_REVIEW = JSON.stringify({
+    vocabulary: [{ word: "climbing", example: "Yesterday I go to climbing wall with my friend Daniel." }],
+    grammar: [
+      {
+        point: "past simple",
+        example: "Yesterday I go to climbing wall with my friend Daniel.",
+        correction: "Yesterday I went to the climbing wall with my friend Daniel.",
+        explanation: "Finished past actions take the past simple.",
+      },
+    ],
+    summary: "A short climbing chat.",
+  });
+
+  it("extractReview retries once on an empty reply and keeps the LLM panel", async () => {
+    let calls = 0;
+    const flaky: LLM = {
+      name: "proxy",
+      async invoke() {
+        calls += 1;
+        return calls === 1 ? "" : VALID_EN_REVIEW;
+      },
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { review, path } = await extractReview(ESL_ENGLISH_FIXTURE, CFG_EN, flaky);
+    expect(calls).toBe(2);
+    expect(path).toBe("llm");
+    expect(review.vocabulary[0]?.word).toBe("climbing");
+    expect(warn.mock.calls.flat().join(" ")).toContain("retrying once");
+    warn.mockRestore();
+  });
+
+  it("extractReview names the reason when it really does fall back", async () => {
+    let calls = 0;
+    const dead: LLM = {
+      name: "proxy",
+      async invoke() {
+        calls += 1;
+        return "I need more context to answer that.";
+      },
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { path } = await extractReview(ESL_ENGLISH_FIXTURE, CFG_EN, dead);
+    expect(calls).toBe(2);
+    expect(path).toBe("heuristic");
+    expect(warn.mock.calls.flat().join(" ")).toContain("nothing parseable twice");
+    warn.mockRestore();
   });
 
   it("extractReview never lets the LLM talk us out of an observed mistake", async () => {

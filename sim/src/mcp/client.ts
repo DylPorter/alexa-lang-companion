@@ -19,6 +19,9 @@ import type {
 
 export type WireListener = (ev: WireEvent) => void;
 
+/** SDK default is 60 s; `end_session` wraps an LLM pass that has exceeded it under load. */
+const END_SESSION_TIMEOUT_MS = 180_000;
+
 let wireSeq = 0;
 
 /** fetch wrapper that records request/response bodies for the inspector. */
@@ -120,8 +123,16 @@ export class SalaClient {
     return structured<RecallResult>(res, "recall");
   }
 
+  /**
+   * Review extraction is one LLM pass over the whole transcript and measures 28-41 s on our
+   * proxy backend — once past the SDK's 60 s default under load. A per-call timeout is the only
+   * lever (the SDK has no progress signal on tool calls), so this call gets 180 s and the demo
+   * does not die at "still working…" mid-cut. Every other tool keeps the default.
+   */
   async endSession(args: { sessionId: string }): Promise<EndSessionResult> {
-    const res = await this.client.callTool({ name: "end_session", arguments: args });
+    const res = await this.client.callTool({ name: "end_session", arguments: args }, undefined, {
+      timeout: END_SESSION_TIMEOUT_MS,
+    });
     return structured<EndSessionResult>(res, "end_session");
   }
 

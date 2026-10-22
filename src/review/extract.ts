@@ -559,11 +559,26 @@ export async function extractReview(
     const transcriptText = transcript
       .map((t) => `${t.role === "user" ? "USER" : "SALA"}: ${t.content}`)
       .join("\n");
-    const raw = await llm.invoke("review", reviewSystemPrompt(cfg), [
-      { role: "user", content: `TRANSCRIPT:\n${transcriptText}` },
-    ]);
-    const parsed = extractJsonObject(raw);
-    if (!parsed) return { review: heuristic, path: "heuristic" };
+    const ask = () =>
+      llm.invoke("review", reviewSystemPrompt(cfg), [
+        { role: "user", content: `TRANSCRIPT:\n${transcriptText}` },
+      ]);
+    let raw = (await ask()).trim();
+    let parsed = raw ? extractJsonObject(raw) : null;
+    if (!parsed) {
+      // The chat path already guards this: our proxy occasionally answers 200 with
+      // empty content (observed 2026-10-20), and the review pass is the same call
+      // shape. Without a retry the money shot silently degrades to the heuristic
+      // table — which is what happened to a German session on 2026-10-22 with no
+      // log line to explain it. One retry, then say out loud why we fell back.
+      console.warn(`[review] no parseable LLM review for ${cfg.targetLanguage}, retrying once`);
+      raw = (await ask()).trim();
+      parsed = raw ? extractJsonObject(raw) : null;
+    }
+    if (!parsed) {
+      console.warn(`[review] → heuristic for ${cfg.targetLanguage}: LLM returned nothing parseable twice`);
+      return { review: heuristic, path: "heuristic" };
+    }
     const userTurns = transcript.filter((t) => t.role === "user").map((t) => t.content);
     const { review, dropped } = validateLLMReview(parsed, userTurns);
     if (dropped.length > 0) {
@@ -587,6 +602,10 @@ export async function extractReview(
           path: "llm",
         };
       }
+      console.warn(
+        `[review] → heuristic for ${cfg.targetLanguage}: every LLM vocab example failed verbatim validation ` +
+          `(${dropped.length} dropped) and the heuristics already found grammar`,
+      );
       return { review: heuristic, path: "heuristic" };
     }
     if (review.grammar.length === 0 && heuristic.grammar.length > 0) {

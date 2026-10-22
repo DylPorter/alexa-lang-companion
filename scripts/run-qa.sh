@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# One-command live QA replay: drives the scripted persona + money-shot probe in
+# scripts/a2-persona-qa.ts against a THROWAWAY server, then prints the verdict
+# lines. Exists because conversation quality cannot be a CI test (nondeterministic,
+# needs a live backend) but must be re-checkable before a recording session.
+#
+#   bash scripts/run-qa.sh              # full replay (~2-4 min, makes ~20 LLM calls)
+#   SALA_LLM=echo bash scripts/run-qa.sh  # same flow, offline, zero spend
+#
+# Uses its own port and its own DB so it can never pollute the demo state you are
+# about to film with. Reads .env exactly like npm start does.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+QA_PORT="${QA_PORT:-3101}"
+QA_DB="${QA_DB:-/tmp/sala-qa.db}"
+QA_LOG="${QA_LOG:-/tmp/sala-qa-run.log}"
+SERVER_LOG="${SERVER_LOG:-/tmp/sala-qa-server.log}"
+
+# The probe checks cross-session recall and the money shot against a known
+# transcript. A leftover DB from a previous run makes those checks vacuous — the
+# memories it "recalls" are from the last test, not this one.
+rm -f "$QA_DB" "$QA_DB-shm" "$QA_DB-wal"
+
+if ss -ltnH | awk '{print $4}' | grep -qE "[:.]${QA_PORT}$"; then
+  echo "run-qa: port ${QA_PORT} is already in use. Set QA_PORT=<other> or free it." >&2
+  exit 1
+fi
+
+# setsid puts npm + tsx + node in their own process group so cleanup can kill the
+# exact tree we started. The PID is read back from a file because setsid forks:
+# $! is setsid itself, not the new session leader. Never pkill -f — it matches
+# unrelated sessions, including the demo server running for the recording.
+PID_FILE="/tmp/sala-qa-${QA_PORT}.pid"
+rm -f "$PID_FILE"
+cleanup() {
+  if [ -f "$PID_FILE" ]; then
+    kill -- "-$(cat "$PID_FILE")" 2>/dev/null || true
+    rm -f "$PID_FILE"
+  fi
+}
+trap cleanup EXIT INT TERM
+
+SALA_LLM="${SALA_LLM:-proxy}" SALA_DB_PATH="$QA_DB" PORT="$QA_PORT" \
+  SALA_ALLOWED_ORIGINS="http://localhost:5199" \
+  setsid bash -c "echo \$\$ > '$PID_FILE'; exec npm start" >"$SERVER_LOG" 2>&1 &
+
+for _ in $(seq 1 40); do
+  if curl -s -m 2 "http://127.0.0.1:${QA_PORT}/health" | grep -q '"ok":true'; then break; fi
+  sleep 0.5
+done
+BACKEND="$(curl -s -m 3 "http://127.0.0.1:${QA_PORT}/health" || true)"
+case "$BACKEND" in
+  *'"ok":true'*) echo "run-qa: isolated server up on :${QA_PORT} ${BACKEND}" ;;
+  *) echo "run-qa: server never became healthy on :${QA_PORT} — see ${SERVER_LOG}" >&2; exit 1 ;;
+esac
+if [ "$SALA_LLM" != "echo" ] && ! grep -q '"backend":"proxy"' <<<"$BACKEND"; then
+  echo "run-qa: WARNING — asked for ${SALA_LLM}, server reports ${BACKEND}" >&2
+fi
+
+echo "run-qa: replaying the persona + money-shot probe (this makes real LLM calls)..."
+npx tsx scripts/a2-persona-qa.ts "http://127.0.0.1:${QA_PORT}/mcp" >"$QA_LOG" 2>&1 && RC=0 || RC=$?
+
+echo
+grep -E "^\[P|^===== |extraction=|sessions stored|new-session opener" "$QA_LOG" || true
+echo
+if [ "$RC" -ne 0 ]; then
+  echo "run-qa: probe exited ${RC}. Last server lines:" >&2
+  tail -15 "$SERVER_LOG" >&2
+  exit "$RC"
+fi
+
+FAILED="$(grep -c ': FAIL\|NO-ITEMS' "$QA_LOG" || true)"
+if [ "${FAILED:-0}" -gt 0 ]; then
+  echo "run-qa: ${FAILED} verdict(s) failed — see ${QA_LOG}"
+  exit 1
+fi
+echo "run-qa: all verdicts PASS · full transcript: ${QA_LOG} · server log: ${SERVER_LOG} (fallback reasons live there)"
