@@ -55,10 +55,24 @@ export class ProxyLLM implements LLM {
     }
     const body = (await resp.json()) as {
       content?: Array<{ type?: string; text?: string }>;
+      stop_reason?: string;
     };
-    return (body.content ?? [])
+    const blocks = body.content ?? [];
+    const text = blocks
       .filter((b) => b.type === "text")
       .map((b) => b.text ?? "")
       .join("");
+    if (!text) {
+      // Shapes and the stop reason only — never the response body, which can echo
+      // request headers. Without this line an empty completion is indistinguishable
+      // from "the model had nothing to say", which is how the thinking-budget cut
+      // (see maxTokensFor) hid for two days as a silent heuristic fallback.
+      console.warn(
+        `[llm] proxy gave no text for phase=${phase} stop_reason=${body.stop_reason ?? "?"} ` +
+          `blocks=${JSON.stringify(blocks.map((b) => `${b.type}:${(b.text ?? "").length}`))}` +
+          (body.stop_reason === "max_tokens" ? " — thinking ate the budget, raise maxTokensFor" : ""),
+      );
+    }
+    return text;
   }
 }

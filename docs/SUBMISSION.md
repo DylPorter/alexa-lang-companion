@@ -46,8 +46,13 @@ tools."*
   `testing@devpost.com` **and** the Amazon DevRel GitHub users as collaborators (Settings >
   Collaborators > Add people): `knmeiss`, `giolaq`, `anishamalde`, `mosesroth`, `emersonsklar`
   (five usernames plus the devpost mailbox = six contacts; verified on the rules page 10-20).
-  **Plan: public at submission.** Alan is added as a collaborator on the private repo now so he
-  can cold-run the demo on his own machine (README has the teammate guide).
+  **Plan: public at submission.** Alan (`atiyev`) needs collaborator access so he can cold-run the
+  demo on his own machine (README has the teammate guide). **Checked, not assumed, 10-22 12:26:**
+  `collaborators` returned only `DylPorter` and no pending invite existed — the earlier "added"
+  note in this file was never true. Invitation id 338677853 sent to `atiyev` with `push`
+  (`pull` is rejected on a personal private repo: 422 "Cannot assign permission of read"). He must
+  accept it; the repo is still invisible to him until he does. Re-check with
+  `gh api repos/DylPorter/alexa-lang-companion/invitations`.
   The repo must contain all source, assets, and instructions to be functional.
 - [ ] **Product Feedback (REQUIRED)** — five questions per tool/API/SDK used: (1) which tools
   and for what; (2) what worked well; (3) what needs work; (4) onboarding zero → hello world;

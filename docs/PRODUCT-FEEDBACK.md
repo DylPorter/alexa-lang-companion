@@ -147,14 +147,29 @@ Claude-compatible endpoint with no Anthropic account in the loop.
 sent because proxies read one or the other, and every persona and review prompt behaved the
 same as it does against other Anthropic-compatible targets.
 
-**What needs work.** Reliability and signals. Three times across the build the proxy returned
-HTTP 200 with empty content, including once on both attempts of a single chat turn, which is
-why our server retries once and then says "I lost my words" instead of inventing a reply. A 200
-with empty content should be an error status. Review extraction runs 28 to 41 s against it with
-no streaming or progress on the tool call, which is the demo's only dead air. And the ambient
-environment exports `ANTHROPIC_API_KEY` as an empty string next to a valid
-`ANTHROPIC_AUTH_TOKEN`, which traps every nullish-coalescing fallback chain. Select the first
-non-empty value, or do not export empty keys.
+**What needs work.** Two real gaps, and one accusation we now know was ours, not the proxy's.
+
+The accusation first, because it is the useful part. For days this endpoint looked like it was
+returning HTTP 200 with empty content, including once on both attempts of a single chat turn. On
+2026-10-22 we finally measured the raw response instead of our client's view of it: `stop_reason`
+was `max_tokens`, `output_tokens` had hit the cap exactly, and `content` contained a single
+`thinking` block and no `text` block. The model had spent the entire budget reasoning and simply
+had not started answering. Our client filtered `content` to `type === "text"` and joined it, so a
+truncation looked identical to silence. So: **the reasoning block is billed against `max_tokens`
+before any text is produced, and nothing in the compatibility layer says that in one place.** Our
+review pass was capped at 2048; the same call needs about 2.0k of thinking plus 1.7k of text, so
+it was being cut on the finish line, and it cut silently. Anyone porting an agent to a
+reasoning-capable model through an Anthropic-compatible endpoint should expect their tool
+extraction to come back "empty" until they give the budget real headroom.
+
+What the proxy still owes: a response with no `text` block should not be an undifferentiated 200.
+Either make truncation an error status, or say in the docs that `stop_reason: max_tokens` with a
+thinking-only `content` is the signal. We now log the stop reason and block shapes ourselves when
+text is empty, and that one line turned a two-day mystery into a one-line fix. Second real gap:
+review extraction runs 28 to 41 s with no streaming or progress on the tool call, which is the
+demo's only dead air. Third, unchanged: the ambient environment exports `ANTHROPIC_API_KEY` as an
+empty string next to a valid `ANTHROPIC_AUTH_TOKEN`, which traps every nullish-coalescing fallback
+chain. Select the first non-empty value, or do not export empty keys.
 
 **Zero to hello world.** One environment variable.
 

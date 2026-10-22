@@ -14,6 +14,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# Must be a real variable, not just a command prefix: `set -u` makes any later
+# reference to $SALA_LLM die when it was only ever passed inline to npm start.
+export SALA_LLM="${SALA_LLM:-proxy}"
 QA_PORT="${QA_PORT:-3101}"
 QA_DB="${QA_DB:-/tmp/sala-qa.db}"
 QA_LOG="${QA_LOG:-/tmp/sala-qa-run.log}"
@@ -43,7 +46,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-SALA_LLM="${SALA_LLM:-proxy}" SALA_DB_PATH="$QA_DB" PORT="$QA_PORT" \
+SALA_DB_PATH="$QA_DB" PORT="$QA_PORT" \
   SALA_ALLOWED_ORIGINS="http://localhost:5199" \
   setsid bash -c "echo \$\$ > '$PID_FILE'; exec npm start" >"$SERVER_LOG" 2>&1 &
 
@@ -77,4 +80,17 @@ if [ "${FAILED:-0}" -gt 0 ]; then
   echo "run-qa: ${FAILED} verdict(s) failed — see ${QA_LOG}"
   exit 1
 fi
-echo "run-qa: all verdicts PASS · full transcript: ${QA_LOG} · server log: ${SERVER_LOG} (fallback reasons live there)"
+echo "run-qa: all verdicts PASS · full transcript: ${QA_LOG}"
+# Print WHY any panel degraded, not just that it did. A heuristic fallback is not a
+# failure (the review is still honest and verbatim) but it is weaker, and on recording
+# day you want to see it in the verdict block instead of digging for it in a log file.
+REASONS="$(grep -E '^\[review\]' "$SERVER_LOG" || true)"
+if [ -n "$REASONS" ]; then
+  echo "run-qa: review-path warnings from the server:"
+  sed 's/^/    /' <<<"$REASONS"
+else
+  echo "run-qa: no review fallbacks — every money shot came back on the LLM path"
+fi
+# Explicit: a verifier whose exit code depends on whichever echo/pipe happened to run
+# last is a verifier that can lie. Pass means 0, nothing else.
+exit 0
