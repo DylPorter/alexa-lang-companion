@@ -1,8 +1,9 @@
-# Product Feedback (REQUIRED form section), DRAFT v1, 2026-10-20
+# Product Feedback (REQUIRED form section), DRAFT v2, 2026-10-22
 
-Owner: Dylan. Status: draft for the Devpost form's Product Feedback requirement. Five
-questions per tool, per the rules. Resolve the one `[UPDATE-AFTER-ENABLEMENT]` marker and
-re-verify every claim before pasting into the form.
+Owner: Dylan. Status: ready for the Devpost form's Product Feedback requirement. Five questions
+per tool, per the rules. The Bedrock enablement marker is resolved as of 10-22 and states plainly
+that we have not yet seen a live Nova reply, so re-read that section against reality on submission
+day and cut anything that has since become false rather than softening it.
 
 Project: Sala, an Alexa+ companion MCP server (Alexa+ track). Everything below was hit during
 this build, between 15 and 20 Oct 2026. The matching friction log entries (task, steps,
@@ -204,18 +205,35 @@ transcript and drops anything invented, then falls back to the deterministic heu
 cost us nothing. Flagging it because the next person building a JSON-extracting agent on a cheap
 model will not have that fallback pre-built, and the catalog gives no way to filter for it.
 
-[UPDATE-AFTER-ENABLEMENT: still to fill from the live smoke, the first-invoke Marketplace
-subscription latency, the actual DE and FR grammar quality on Nova Lite, and whether Converse errors
-carry enough context to retry safely.] The honest current-state sentence for the form: the
-integration is complete in code and gated in practice, because the AWS account setup is a human
-step we have not run yet. Our smoke prints GATED rather than FAILED without creds, on purpose.
+Fifth, and this is the one that cost us the session. We never got a paid Bedrock inference, so
+what follows is what the enablement path actually feels like, not what a working call feels like.
+The API key route failed on an AWS Organizations member account because the organization's service
+control policy denies `bedrock:CallWithBearerToken`, and the api-keys doc does not mention SCPs or
+that action anywhere, so the only way to discover it is to try. The error message itself was good
+there, naming the action, the resource and the exact SCP ARN. Then the long-term key silently
+created an IAM user with no cleanup pointer in the UI. Switching to SigV4 authentication passed
+first time, and every Nova model returned `ThrottlingException: Too many tokens per day` on the
+first call the account had ever made, which is not throttling, it is the Free account plan having
+no paid Bedrock capacity, and the word "day" sent us checking regions, clock skew and token counts
+before we read the plan rules. The retry-safety answer is therefore split. Authorization errors are
+actionable. Authentication and quota errors are confidently wrong, and a brand-new account hits both
+before it hits anything useful.
 
-**Zero to hello world.** Model selection took the longest and it was documentation work, not setup.
-The setup itself looks small now that we know Anthropic is the only provider with a use-case form
-and that the short-term API key covers credentials without any IAM user. Our internal checklist
-estimates 30 minutes including the first smoke.
+Honest current state for the form: the integration is complete in code, pinned by tests, and
+documented, and we have not yet seen a live Nova reply. DE and FR grammar quality on Nova Lite is
+therefore still unverified by us, and we are not going to describe output we have not read. Our
+smoke prints GATED rather than FAILED when credentials are absent, and now prints the real provider
+error rather than `undefined` when they are present but blocked, which is exactly what caught this.
 
-**Build again?** Yes, pending the live check. Nothing in the SDK has fought us yet.
+**Zero to hello world.** Model selection took longest and it was documentation work, not setup. The
+setup itself is small for a standalone account with a payment method, and it is invisible for an
+account that is an Organizations member on the Free plan, because nothing tells you either fact up
+front. Our internal checklist estimated 30 minutes including the first smoke, and the honest number
+for this account is still open.
+
+**Build again?** Yes. Nothing in the SDK has fought us, and the converse client is the least
+surprising part of the whole stack. The account-plan and organizations layer is what we would read
+first next time.
 
 ## Devpost and the Alexa+ developer docs
 

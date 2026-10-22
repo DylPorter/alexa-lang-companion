@@ -52,8 +52,9 @@ tools."*
 - [ ] **Product Feedback (REQUIRED)** — five questions per tool/API/SDK used: (1) which tools
   and for what; (2) what worked well; (3) what needs work; (4) onboarding zero → hello world;
   (5) would you build with these again, Yes/No + why. Owner: Dylan.
-  **DRAFT v1: [PRODUCT-FEEDBACK.md](PRODUCT-FEEDBACK.md)** (voice-checked). Before pasting:
-  resolve the `[UPDATE-AFTER-ENABLEMENT]` marker for Bedrock and re-verify every claim.
+  **DRAFT v2: [PRODUCT-FEEDBACK.md](PRODUCT-FEEDBACK.md)** (voice-checked). The Bedrock enablement
+  marker is resolved (10-22) and says honestly that we have not seen a live Nova reply. Before
+  pasting: re-verify every claim against that day's reality, especially if Bedrock lands.
 - [ ] **Friction Log Entries (OPTIONAL, up to +10% judging bonus)** — per entry: specific task
   attempted / steps taken / expected vs actual / severity / workaround / actionable suggestion.
   Assessed by Amazon's internal review during Stage 1. Owner: Dylan. Canonical log lives in the
