@@ -131,11 +131,11 @@ tools."*
    issued sequentially is far under any floor, but glance at Service Quotas if a call ever 429s.
    **No hard spend cap exists** — AWS Budgets alerts are free so set one on service=Bedrock anyway,
    and short-term keys expire on their own.
-Everything else is built and proxy-proven. The demo video does NOT depend on this step, **but note
-there is no `.env` on disk yet at all** — `demo.sh` defaults `SALA_LLM=proxy`, so recording day
-needs a `.env` written first whatever backend is used. A Bedrock-backed video is one env var away
-and doubles as the AWS Builder evidence; the demo script's per-beat backend labels then read
-BEDROCK instead of PROXY with no other change.
+Everything else is built and proxy-proven. The demo video does NOT depend on this step. Update
+10-22: `.env` now exists on disk (mode 600, gitignored) with `SALA_LLM=proxy`, and that backend is
+proven from the file alone, so recording day needs no setup on this machine. Alan's machine is the
+other case: he runs echo mode, which needs no `.env` at all. A Bedrock-backed video would still be
+one env var away, but with Builder not claimed there is no reason to touch it.
 
 **Post-hackathon (BYOK):** the public shape is Bedrock as the demo default with proxy/echo as
 bring-your-own-key options. Echo mode is already the zero-secret onboarding path and the backends
