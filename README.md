@@ -317,6 +317,13 @@ Local-first demo, honest about its boundary:
 - **Single-user stub** — constant demo `account_id`. Production identity is OAuth 2.1 account
   linking (above). Memory stays self-hosted, portable and private by architecture.
 
+## Friction log
+
+`docs/FRICTION-LOG.md` holds the tooling friction entries written in the hackathon's required
+six-field shape (task, steps, expected vs actual, severity, workaround, suggestion) — the optional
+submission artifact that can carry up to a 10% judging bonus. It includes the entries against our
+own tooling, not only against vendors.
+
 ## Testing and acceptance
 
 - **MCP protocol-level integration test** (`tests/integration.mcp.test.ts`): real SDK `Client`

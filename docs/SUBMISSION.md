@@ -58,8 +58,11 @@ tools."*
   attempted / steps taken / expected vs actual / severity / workaround / actionable suggestion.
   Assessed by Amazon's internal review during Stage 1. Owner: Dylan. Canonical log lives in the
   vault (`Projects/Amazon Hackathon - Friction Log.md`, Sala sections A1/A2/A3).
-  **Export into the submission form text (and drop a repo copy at `docs/FRICTION-LOG.md`) on
-  submission day.** The Sala entries are already written in the required six-field shape.
+  **Repo copy DONE 10-22: `docs/FRICTION-LOG.md`** (27 entries, Sala A1/A2/A3 + the Bedrock
+  enablement + one self-disclosure about our own smoke). Cloud account identifiers are redacted in
+  that copy because the repo goes public. Remaining: **paste the entries into the submission form
+  text** on submission day — the form is where the Stage 1 reviewer reads them, the repo copy is
+  corroboration.
 - [ ] **Feature Requests (OPTIONAL)** — description / why it matters / priority. Cheap to lift
   from the friction log's "Suggestion" lines (SDK origin-allowlist semantics, SSE-listen skip in
   stateless mode, Chromium's phantom Linux TTS API, headless fake speech input).
