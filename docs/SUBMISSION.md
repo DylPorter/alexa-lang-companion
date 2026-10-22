@@ -74,9 +74,16 @@ tools."*
   services (Amazon Bedrock, AgentCore, Strands SDK, Kiro Crew, SageMaker, etc.) with documented
   integrations."* Our path: `BedrockLLM` (`src/llm/bedrock.ts`), a first-class core backend using
   `@aws-sdk/client-bedrock-runtime` converse API, documented in README + SPEC.
-  **⛔ GATED on Dylan's human enablement step (below).** Without it the smoke prints GATED and
-  the mini-challenge claim cannot be made. Mark it clearly in the form either way. Honest
-  fallback if enablement never lands: the entry still stands on the Alexa+ track alone.
+  **⛔ GATED, and as of 10-22 the gate is an account-shape problem, not a code problem.** Two
+  blockers found by actually running it: the account is an AWS Organizations member and the org's
+  SCP denies `bedrock:CallWithBearerToken`, so the API-key path is unusable there at all; and with
+  SigV4 working, the Free account plan answers every Nova model with a first-call `Throttling
+  Exception: Too many tokens per day` because it has no paid Bedrock capacity. Resolving it needs
+  (a) confirmation that management account `023439859073` belongs to Dylan and not to an employer,
+  and (b) a paid-plan upgrade, which is why the org check comes first. Until a Nova reply exists the
+  smoke prints the real provider error and the mini-challenge claim is **not** made. Mark it clearly
+  in the form either way. Honest fallback if enablement never lands: the entry still stands on the
+  Alexa+ track alone, and the enablement friction is submitted as Product Feedback regardless.
   Scoring note: "Obvious: single Bedrock call. Creative: multi-service pipeline, agentic
   architecture." Our shape (LLM backend swap with in-code validation of model output, memory
   retrieval feeding the prompt) is above the obvious bar. Write it up that way only if live.

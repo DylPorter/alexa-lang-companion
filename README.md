@@ -128,6 +128,12 @@ validated token subject. No schema change needed. See `src/config.ts`.
   Claude on cost and onboarding: Nova Lite is ~$0.06/M input and ~$0.24/M output, so the entire
   demo workload is about **US$0.013**, and Claude additionally gates every first invoke behind a
   one-time Anthropic use-case form.
+  **Status, because it would be easy to read the paragraph above as a live claim:** this backend is
+  implemented, is the default whenever Bedrock credentials resolve, and is pinned by tests, but no
+  live Nova reply has been observed yet on the account we have. The enablement is blocked twice over
+  (an Organizations SCP that denies the API-key auth path, then a Free-plan account with no paid
+  Bedrock capacity), and both failures are written up in `docs/FRICTION-LOG.md` and the Product
+  Feedback. The recorded demo runs on the proxy or echo path, and the README says which one on screen.
 
 Selection: explicit `SALA_LLM=echo|proxy|bedrock`, else AWS creds present → bedrock, else
 `ANTHROPIC_BASE_URL` → proxy, else echo. The review extractor's LLM pass enhances the

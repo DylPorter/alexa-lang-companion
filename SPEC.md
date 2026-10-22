@@ -30,11 +30,18 @@ across sessions."
    └─ LLM backend: swappable Echo/Proxy/Bedrock classes (same shape proven in
         firetv-factcheck/backend/verify_agent.py — Dylan's own in-window code, clean-room OK)
         dev = qwen proxy (ANTHROPIC_BASE_URL); **Bedrock = FIRST-CLASS core backend
-        (steered 10-20): the submission demo runs on Bedrock via converse API,
-        @aws-sdk/client-bedrock-runtime) — it is the AWS Builder mini-challenge evidence,
-        not an optional extra. Model steered 10-21 by Dylan to Amazon Nova Lite (bare
-        In-Region id amazon.nova-lite-v1:0) rather than Claude: cost and onboarding, and the
-        Bedrock service is the Builder claim, not any one vendor.** Selection: explicit SALA_LLM=bedrock|proxy|echo, else
+        (steered 10-20): Bedrock via converse API, @aws-sdk/client-bedrock-runtime, as the
+        AWS Builder mini-challenge evidence, not an optional extra. Model steered 10-21 by Dylan
+        to Amazon Nova Lite (bare In-Region id amazon.nova-lite-v1:0) rather than Claude: cost and
+        onboarding, and the Bedrock service is the Builder claim, not any one vendor.
+        STATUS 10-22, stated honestly because the earlier line read as a promise: the backend is
+        implemented, wired as the default selection when credentials exist, and pinned by tests,
+        but no live Nova reply has been observed yet. The account is an AWS Organizations member
+        whose SCP denies bedrock:CallWithBearerToken (so API keys are unusable), SigV4 authenticates,
+        and the Free account plan then returns a first-call "Too many tokens per day". The recorded
+        demo therefore runs on the proxy or echo path unless that enablement lands. The AWS Builder
+        entry is claimed only if a live Bedrock run is on screen or in the smoke output.** Selection:
+        explicit SALA_LLM=bedrock|proxy|echo, else
         AWS creds present → bedrock, else ANTHROPIC_BASE_URL → proxy, else echo
 ```
 
