@@ -295,6 +295,13 @@ demo, fresh learner.
 
 Local-first demo, honest about its boundary:
 
+- **`npm audit`: 0 vulnerabilities in the runtime tree, 3 in the test toolchain.** `npm audit
+  --omit=dev` is clean. The three findings (`vitest`, `@vitest/mocker`, `tinypool`) all live in the
+  dev/test chain and none of them is reachable from the demo or the server — the exploit paths are
+  the Vitest UI server and worker-options deserialization, neither of which this app runs. They are
+  pinned by `package-lock.json` at current versions; there is no non-breaking upgrade that clears
+  them today. Flagged rather than hidden because a fresh `npm install` shows them and you will want
+  to know why.
 - **Loopback by default** — the server binds `127.0.0.1`. A wider bind is an explicit
   `SALA_HOST=0.0.0.0` opt-in (don't, on untrusted networks: v1 has no request auth).
 - **DNS-rebinding / CSRF defense** — Host-header allowlist enforced in the handler (403) and
