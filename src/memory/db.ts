@@ -44,6 +44,18 @@ export interface GrammarItem {
   example: string; // the user's own (mistaken) sentence, verbatim
   correction: string;
   explanation: string;
+  /**
+   * Stable identity for this mistake class (issue #2). Heuristic items carry the
+   * `MISTAKE_TABLES` pattern id; LLM items get a folded/aliased key derived from
+   * `point`. Optional so reviews stored before this existed still validate.
+   */
+  mistakeId?: string;
+  /**
+   * Only set when the SAME identity genuinely appears in stored rows from earlier
+   * sessions. `seenInSessions` counts distinct prior sessions + this one, from real
+   * rows — never inferred, never 1 by default. See `mistakeHistory`.
+   */
+  recurrence?: { seenInSessions: number; firstDate: string };
 }
 
 export interface Review {
@@ -102,6 +114,23 @@ END;
 CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
   INSERT INTO messages_fts(rowid, content) VALUES (new.id, new.content);
 END;
+-- Recurrence (issue #2): which mistake identities appeared in which sessions.
+-- Deterministic identity + counting, NOT similarity search: "have I seen this
+-- before" is an exact-key question, so it gets an exact key and a COUNT. No
+-- embeddings, no vector index — same reason recall is FTS5 (SPEC: honest
+-- simplicity), and it keeps the answer explainable on camera.
+-- Additive and idempotent: existing sala.db files open unchanged with old
+-- sessions intact.
+CREATE TABLE IF NOT EXISTS session_mistakes (
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  account_id TEXT NOT NULL,
+  mistake_id TEXT NOT NULL,
+  language TEXT NOT NULL,
+  recorded_at TEXT NOT NULL,
+  PRIMARY KEY (session_id, mistake_id)
+);
+CREATE INDEX IF NOT EXISTS idx_session_mistakes
+  ON session_mistakes(account_id, mistake_id, recorded_at);
 `;
 
 export class MemoryStore {
@@ -159,13 +188,53 @@ export class MemoryStore {
     }));
   }
 
+  /**
+   * Closes the session and records which mistake identities it contained.
+   * Callers that want recurrence numbers on the panel must read `mistakeHistory`
+   * BEFORE this runs: the rows written here include the current session, and a
+   * count that silently includes today's own mistake would be a fake "you keep
+   * making this" claim.
+   */
   endSession(id: string, summary: string, review: Review): void {
-    this.db
+    const now = new Date().toISOString();
+    const language = this.getSession(id)?.language ?? "";
+    this.db.transaction(() => {
+      this.db
+        .prepare(
+          `UPDATE sessions SET ended_at = ?, summary = ?, review_json = ?
+           WHERE id = ? AND account_id = ?`,
+        )
+        .run(now, summary, JSON.stringify(review), id, this.accountId);
+      const ins = this.db.prepare(
+        `INSERT OR IGNORE INTO session_mistakes
+           (session_id, account_id, mistake_id, language, recorded_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      for (const g of review.grammar) {
+        if (!g.mistakeId) continue;
+        ins.run(id, this.accountId, g.mistakeId, language, now);
+      }
+    })();
+  }
+
+  /**
+   * How many EARLIER sessions contain this exact mistake identity, and when it
+   * first appeared. DISTINCT session_id, because the same mistake recurring twice
+   * in one old conversation is still one session's habit. Returns 0 when there is
+   * no stored evidence — the caller must then omit `recurrence` entirely.
+   */
+  mistakeHistory(
+    mistakeId: string,
+    excludeSessionId: string,
+  ): { priorSessions: number; firstDate: string | null } {
+    const row = this.db
       .prepare(
-        `UPDATE sessions SET ended_at = ?, summary = ?, review_json = ?
-         WHERE id = ? AND account_id = ?`,
+        `SELECT COUNT(DISTINCT session_id) AS n, MIN(recorded_at) AS first_at
+         FROM session_mistakes
+         WHERE account_id = ? AND mistake_id = ? AND session_id != ?`,
       )
-      .run(new Date().toISOString(), summary, JSON.stringify(review), id, this.accountId);
+      .get(this.accountId, mistakeId, excludeSessionId) as { n: number; first_at: string | null };
+    return { priorSessions: row.n ?? 0, firstDate: row.first_at ?? null };
   }
 
   // ----------------------------------------------------------------- messages

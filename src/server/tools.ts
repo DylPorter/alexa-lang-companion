@@ -62,6 +62,17 @@ const grammarItemSchema = z.object({
   example: z.string(),
   correction: z.string(),
   explanation: z.string(),
+  // Issue #2. Both are OPTIONAL and only ever present when a real row backs them:
+  // the MCP SDK validates `structuredContent` against `outputSchema` and rejects
+  // undeclared keys outright ("must NOT have additional properties"), so a field
+  // that leaves the server must be declared here or the whole tool call errors.
+  mistakeId: z.string().optional(),
+  recurrence: z
+    .object({
+      seenInSessions: z.number().int().min(1),
+      firstDate: z.string(),
+    })
+    .optional(),
 });
 const reviewSchema = z.object({
   vocabulary: z.array(vocabItemSchema),

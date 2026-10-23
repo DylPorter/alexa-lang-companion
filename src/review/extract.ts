@@ -255,6 +255,137 @@ export function mistakeTableFor(lang: string): MistakePattern[] {
   return MISTAKE_TABLES[lang.toLowerCase().slice(0, 2)] ?? [];
 }
 
+// ------------------------------------------------- mistake identity (issue #2)
+
+/**
+ * Cross-session recurrence needs one identity per mistake CLASS, and the two
+ * extraction paths name things differently: the heuristics carry a stable table id
+ * (`de-perf-haben-sein`), while the model writes prose labels it invents each time
+ * ("Present perfect auxiliary选择", "Perfekt: sein with motion"). This maps the
+ * prose onto the table id.
+ *
+ * Deterministic string normalisation + a data table — no embeddings, no similarity
+ * search, no extra LLM call. A repeat is an exact fact ("this id was stored in N
+ * earlier sessions"), and it stays reproducible in a test. If a label does not map,
+ * it keeps its own normalised slug, so the same wording still matches itself in
+ * later sessions instead of being silently dropped.
+ */
+const MISTAKE_ALIASES: Record<string, string> = {
+  // EN
+  "en-past-simple": "en-past-tense-adverb",
+  "en-simple-past": "en-past-tense-adverb",
+  "en-past-tense": "en-past-tense-adverb",
+  "en-past-tense-with-finished-time-adverb": "en-past-tense-adverb",
+  "en-third-person-s": "en-third-person-s",
+  "en-third-person-singular": "en-third-person-s",
+  "en-subject-verb-agreement-third-person": "en-third-person-s",
+  "en-articles": "en-article-place",
+  "en-article-usage": "en-article-place",
+  "en-indefinite-article-with-place": "en-article-place",
+  "en-dependent-prepositions": "en-depend-prep",
+  "en-preposition-after-depend": "en-depend-prep",
+  "en-married-preposition": "en-married-prep",
+  "en-am-agreement": "en-am-agree",
+  "en-i-am-vs-i-is": "en-am-agree",
+  // FR
+  "fr-passe-compose-aller": "fr-passe-compose-aller",
+  "fr-passed-composite-with-aller": "fr-passe-compose-aller",
+  "fr-auxiliary-etre-with-aller": "fr-passe-compose-aller",
+  "fr-beaucoup-de": "fr-beaucoup-de",
+  "fr-quantifier-beaucoup": "fr-beaucoup-de",
+  "fr-age-avoir": "fr-age-avoir",
+  "fr-age-with-avoir": "fr-age-avoir",
+  "fr-voiture-gender": "fr-voiture-gender",
+  "fr-feminine-noun-gender": "fr-voiture-gender",
+  "fr-past-marker-present": "fr-past-marker-present",
+  "fr-hier-with-present-tense": "fr-past-marker-present",
+  "fr-elision-je": "fr-elision-je",
+  "fr-je-elision-before-vowel": "fr-elision-je",
+  // DE
+  "de-perfekt-haben-sein": "de-perf-haben-sein",
+  "de-perfekt-auxiliary": "de-perf-haben-sein",
+  "de-perfekt-with-sein": "de-perf-haben-sein",
+  "de-sein-perfekt": "de-perf-haben-sein",
+  "de-present-perfect-auxiliary-sein": "de-perf-haben-sein",
+  "de-partizip-ii-sein": "de-perf-haben-sein",
+  "de-article-feminine": "de-article-feminine",
+  "de-feminine-article-die-eine": "de-article-feminine",
+  "de-accusative-der": "de-accusative-der",
+  "de-accusative-article-den": "de-accusative-der",
+  // ES
+  "es-ser-estar-agree": "es-ser-estar-agree",
+  "es-ser-estar-agreement": "es-ser-estar-agree",
+  "es-gustar-accent": "es-gustar-accent",
+  "es-preterite-accent": "es-gustar-accent",
+};
+
+/** Fold a label to a comparable ASCII slug: no case, no accents, no punctuation. */
+export function mistakeSlug(label: string): string {
+  return fold(label)
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Canonical identity for a grammar point. Heuristic items already know it; this is
+ * for model-written labels, and it prefers a real table id over a slug so both
+ * paths agree on the same key.
+ */
+export function canonicalMistakeId(lang: string, label: string, tableId?: string): string {
+  const l = lang.toLowerCase().slice(0, 2);
+  if (tableId) return tableId;
+  const slug = mistakeSlug(label);
+  const aliased = MISTAKE_ALIASES[`${l}-${slug}`];
+  if (aliased) return aliased;
+  // exact label of a known pattern (folded): the cheapest reliable bridge
+  const hit = mistakeTableFor(l).find((p) => mistakeSlug(p.point) === slug);
+  if (hit) return hit.id;
+  return `${l}-${slug}`;
+}
+
+/**
+ * Give every grammar item a mistake identity, without overwriting the ids the
+ * heuristic path already knows. Called by the server after extraction because both
+ * paths arrive here: heuristic items carry a table id, model items carry prose.
+ */
+export function withMistakeIds(review: Review, lang: string): Review {
+  return {
+    ...review,
+    grammar: review.grammar.map((g) => ({
+      ...g,
+      mistakeId: g.mistakeId ?? canonicalMistakeId(lang, g.point),
+    })),
+  };
+}
+
+/** Read-only view of a mistake's stored history, so extraction stays testable without a DB. */
+export type MistakeHistoryLookup = (
+  mistakeId: string,
+) => { priorSessions: number; firstDate: string | null };
+
+/**
+ * Attach `recurrence` to grammar items that genuinely appeared in EARLIER sessions,
+ * and return the count for the summary line. Mutates nothing the caller did not
+ * already own: items without a `mistakeId`, or with no stored history, get no
+ * `recurrence` field at all — "you keep making this" is only said when a row says so.
+ */
+export function annotateRecurrence(
+  review: Review,
+  history: MistakeHistoryLookup,
+): { review: Review; recurred: number } {
+  let recurred = 0;
+  const grammar = review.grammar.map((g) => {
+    if (!g.mistakeId) return g;
+    const h = history(g.mistakeId);
+    if (h.priorSessions < 1 || !h.firstDate) return g;
+    recurred += 1;
+    return { ...g, recurrence: { seenInSessions: h.priorSessions + 1, firstDate: h.firstDate } };
+  });
+  return { review: { ...review, grammar }, recurred };
+}
+
 // --------------------------------------------------------------- stopword lists
 
 /** Small per-language function-word lists — everything else is content. */
@@ -404,7 +535,11 @@ export function extractReviewHeuristic(transcript: ChatMessage[], cfg: Extractio
   }
 
   // --- grammar: 1-2 points tied to OBSERVED mistakes only; empty if none.
+  // `mistakeId` comes straight off the table pattern, so the identity is the same
+  // string every time this rule fires — that is what makes cross-session counting
+  // (issue #2) an exact lookup instead of a guess.
   const grammar: GrammarItem[] = mistakes.slice(0, 2).map((m) => ({
+    mistakeId: m.pattern.id,
     point: m.pattern.point,
     example: m.userSentence,
     correction: m.correction,
