@@ -8,8 +8,10 @@ using that personal context, and ends each session with grammar/vocabulary revie
 generated from what you actually said. The review cards quote your own sentences, verbatim.
 
 **Status: A1 (server core) + A2 (web sim + voice mode) + A3 (submission polish) COMPLETE.
-138/138 offline tests green, demo proven end-to-end in English and French over a live
-Anthropic-compatible backend, German voice ready.** Full spec: [SPEC.md](SPEC.md).
+181/181 offline tests green, demo proven end-to-end in English, French and German over a live
+Anthropic-compatible backend (review extraction on the LLM path in all three, verbatim integrity
+5/5 · 5/5 · 7/7), review in 5-10 s, and cross-session mistake recurrence proven on real closed
+sessions. German voice ready.** Full spec: [SPEC.md](SPEC.md).
 QA evidence: [docs/a2-qa.md](docs/a2-qa.md). Submission checklist: [docs/SUBMISSION.md](docs/SUBMISSION.md).
 
 ## What it does
@@ -201,7 +203,7 @@ arguably the most honest row in the panel.
 npm install
 npm start                     # MCP server on http://localhost:3000/mcp  (GET /health too)
 SALA_LLM=echo npm start       # force deterministic offline backend
-npm test                      # 138 tests, zero network (verified in a network namespace)
+npm test                      # 181 tests, zero network (verified in a network namespace)
 npm run smoke                 # live proxy smoke (+ bedrock IFF AWS creds, else GATED)
 npm run demo                  # server + web sim in one command
 npm run demo:voice            # same, but fails loudly if the local Piper fallback is missing
@@ -364,8 +366,8 @@ own tooling, not only against vendors.
 - **Security tests** (`tests/security.test.ts`, `tests/cors.test.ts`): foreign Host → 403,
   non-JSON content-type → 415, oversized body → 413/reset, preflight behaviour on both sides of
   the origin allowlist.
-- **Offline proof:** `unshare -rn sh -c 'ip link set lo up; npx vitest run'` → 138/138 with no
-  external interfaces in the namespace.
+- **Offline proof:** `unshare -rn sh -c 'ip link set lo up; npx vitest run'` → 181/181 with no
+  external interfaces in the namespace (re-run 2026-10-23).
 - **Live evidence:** [docs/a2-qa.md](docs/a2-qa.md) records the persona-contract probes (P1-P5),
   the voice checklist (V1-V7), the TTS verdict per platform, observed latencies, and screenshots
   of both language demos in `docs/a2-assets/` plus the A3 TV-size check in `docs/a3-assets/`.

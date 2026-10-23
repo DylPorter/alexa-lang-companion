@@ -86,4 +86,58 @@ to idle, mic disabled through thinking+speaking, re-arms after TTS finishes.
 - Dev-only: Vite HMR fast-refresh preserves the voice state across module swaps while the
   playing `<audio>` is orphaned → machine can stick in `speaking` until a full reload.
   Production (full page loads) is unaffected.
-- `end_session` latency (≈30 s) is the demo's dead air; button label says "Generating review…".
+- ~~`end_session` latency (≈30 s) is the demo's dead air~~ **fixed 2026-10-23**: reasoning off the
+  extraction pass took it to 5-10 s (median 6.3-6.6 s over eleven samples; `docs/LATENCY.md`). Chat
+  turns are the slow half now at median ~5.7 s, which is comfortable inside a take.
+
+## 2026-10-23 — fast path re-run, and mistake recurrence proven on real sessions
+
+`bash scripts/run-qa.sh` with `SALA_CHAT_THINKING=off` (isolated server on :3101, throwaway DB,
+`{"ok":true,"backend":"proxy"}`): **every verdict PASS, zero heuristic fallbacks.**
+
+```
+===== P6 French review (money shot, FR) — extraction=llm  9.9s =====  [P6-FR] verbatim: PASS (5/5)
+===== P7 ESL review  (money shot, EN) — extraction=llm  5.6s =====    [P7-EN] verbatim: PASS (5/5)
+===== P8 German review (money shot, DE) — extraction=llm 7.3s =====   [P8-DE] verbatim: PASS (7/7)
+[P9] stored-reviews: PASS · sessions stored: 7, with a stored review: 3
+```
+
+P1-P5 are read, not asserted. With reasoning off on the persona pass they still held the contract —
+`"You WENT to the market and BOUGHT apples? Nice!"` (one exchange, corrections as recasts, not a
+lecture), `"You actually didn't tell me about a trip to Japan."` on the un-logged trip (P3, no
+fabricated memory), `"vous êtes allés au cinéma ?"` in French (P5). The measured price is reply length,
+not correctness: 49-80 characters with thinking off against 100-148 with it on, which is why the knob
+is not the shipped default (`docs/LATENCY.md`).
+
+### Recurrence (issue #2) — three real closed sessions against the live server
+
+`npx tsx scripts/recurrence-proof.ts http://127.0.0.1:3100/mcp 3` — the same learner habit in three
+separate sessions, each closed with `end_session`, nothing mocked:
+
+```
+session 1 (f513ed4c) · end_session 6.5s · path=llm
+  · Past Simple Tense   id=en-past-simple-tense   recurrence: none
+session 2 (f8e9216d) · end_session 5.5s · path=llm
+  · Past Simple Tense   id=en-past-simple-tense   recurrence: seen 2× since 2026-10-23
+  summary: … They mentioned finishing exercises slowly, being tired, and ignoring their trainer's
+           advice to rest. 1 of these is a mistake you've made before, first logged on 2026-10-23.
+session 3 (36224e68) · end_session 5.1s · path=llm
+  · Past Simple Tense   id=en-past-simple-tense   recurrence: seen 3× since 2026-10-23
+
+[recurrence] seenInSessions per session: 0 → 2 → 3
+[recurrence] first session asserts nothing: PASS
+[recurrence] a repeat earned a count: PASS (3×)
+```
+
+Session 1 claims **nothing** — no `recurrence` field, no summary sentence — because no row existed
+before it. That absence is the guard: the count comes from `COUNT(DISTINCT session_id)` over stored
+rows read *before* the current session's rows are written, so it cannot drift into a flattering
+"you always get this wrong".
+
+**Honest limit, and it is the interesting one.** On the LLM path the identity is the folded label
+(`"Past Simple Tense"` → `en-past-simple-tense`), so a repeat is only counted when the model words the
+class the same way twice (`temperature: 0` helps, `MISTAKE_ALIASES` maps the variants we have actually
+seen onto the heuristic table's ids). Two differently-worded labels for one mistake class stay two
+identities and the chip stays silent. The failure mode is under-claiming, never a number with no row
+behind it — for filming, close the sessions in the same language with the same error and the count
+goes up on camera.
