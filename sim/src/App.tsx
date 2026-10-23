@@ -8,6 +8,7 @@ import {
   SIMULATION_LABEL,
 } from "./constants";
 import { SalaClient } from "./mcp/client";
+import { DemoRoute, runDemoRoute } from "./mcp/demoApi";
 import type { WireEvent } from "./mcp/wireLog";
 import type { EndSessionResult, SessionRecord } from "./mcp/types";
 import { chatRequestArgs, convReducer, initialConv } from "./state/conversation";
@@ -152,6 +153,51 @@ export default function App() {
     if (conn.status === "ready") void refreshSessions();
   }, [conn.status, refreshSessions]);
 
+  /**
+   * The two filming buttons on the Past-sessions panel: start from an empty room, or
+   * load a scripted week of history. They POST to plain HTTP routes on the same server
+   * (`sim/src/mcp/demoApi.ts`) — deliberately not MCP tools, so no assistant can be
+   * prompted to erase a learner's memory — and both answer with what actually happened.
+   *
+   * Afterwards the on-screen transcript is reset, because its session id now points at
+   * rows that do not exist, and the panel is re-read from the server rather than
+   * assumed. Nothing here computes a history the server did not report.
+   */
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const runHistoryRoute = useCallback(
+    async (route: DemoRoute) => {
+      if (historyBusy) return;
+      const question =
+        route === "clear"
+          ? "Delete every stored session, activity and pending follow-up for this account?"
+          : "Replace the stored history with the scripted prior sessions? Whatever is stored now gets deleted.";
+      if (!window.confirm(question)) return;
+      setHistoryBusy(true);
+      setHistoryNotice(null);
+      try {
+        const out = await runDemoRoute(mcpUrl, route);
+        dispatch({ type: "CLEAR" });
+        sessionRef.current = null;
+        setReviewResult(null);
+        setHistoryNotice(
+          route === "clear"
+            ? `Cleared: ${out.cleared?.sessions ?? 0} session(s), ${out.cleared?.messages ?? 0} message(s), ${out.cleared?.followups ?? 0} pending follow-up(s).`
+            : `Prior history loaded: ${out.sessions ?? 0} simulated session(s). Sala will ask about: ${
+                (out.followUps ?? []).map((f) => f.topic).join(", ") || "nothing"
+              }. Recurring habit(s): ${(out.focus ?? []).map((f) => `${f.label} ×${f.sessions}`).join(", ") || "none"}.`,
+        );
+        void refreshSessions();
+        setSideTab("sessions");
+      } catch (err) {
+        setHistoryNotice(errMsg(err));
+      } finally {
+        setHistoryBusy(false);
+      }
+    },
+    [historyBusy, mcpUrl, refreshSessions],
+  );
+
   // ---- actions
   const send = useCallback(
     async (text: string, mode: "text" | "voice" = "text") => {
@@ -196,8 +242,16 @@ export default function App() {
 
   const micToggle = useCallback(() => {
     if (voice === "listening") {
-      sttHandleRef.current?.stop();
-      sttHandleRef.current = null;
+      // Pressing stop is the ONLY thing that commits a voice turn. The recognizer's
+      // onend then delivers the transcript, which carries listening → thinking by
+      // itself; dispatching MIC_OFF here would race it and throw away the sentence the
+      // learner had just finished. The null-handle branch is the safety valve for a
+      // capture that never started.
+      const handle = sttHandleRef.current;
+      if (handle) {
+        handle.stop();
+        return;
+      }
       setInterim(null);
       voiceEvent({ type: "MIC_OFF" });
       return;
@@ -395,7 +449,10 @@ export default function App() {
           <div className="composer-row">
             <Composer
               onSend={(t) => void send(t, "text")}
-              disabled={!ready || conv.sending || ending}
+              // !ready alone kills the box. A turn in flight must not: typing is the
+              // fallback that has to keep working while the model thinks.
+              disabled={!ready}
+              busy={conv.sending || ending}
               placeholder={
                 conv.sessionEnded
                   ? "Session ended — type to start a new conversation…"
@@ -495,6 +552,10 @@ export default function App() {
                 loading={sessionsLoading}
                 error={sessionsErr}
                 onRefresh={() => void refreshSessions()}
+                onClear={() => void runHistoryRoute("clear")}
+                onSeed={() => void runHistoryRoute("seed")}
+                busy={historyBusy}
+                notice={historyNotice}
               />
             )}
           </div>

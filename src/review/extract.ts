@@ -22,19 +22,18 @@
  */
 import { ChatMessage, LLM } from "../llm/types.js";
 import { GrammarItem, Review, VocabItem } from "../memory/db.js";
-import { reviewSystemPrompt } from "../persona/prompts.js";
+import { PersonaConfig, reviewSystemPrompt } from "../persona/prompts.js";
 import { languageName } from "../persona/languages.js";
 
-export interface ExtractionConfig {
-  targetLanguage: string;
-  nativeLanguage: string;
-  /**
-   * Languages actually spoken, when a session switched mid-way. Forwarded to the review
-   * prompt so it does not describe a two-language conversation as a one-language one;
-   * the heuristic path ignores it (its tables are keyed on `targetLanguage` alone).
-   */
-  sessionLanguages?: string[];
-}
+/**
+ * Extraction input IS the persona config: target language, learner L1, which
+ * languages the session actually spoke (forwarded so a two-language conversation is
+ * not described as a one-language one — the heuristic path ignores it, its tables are
+ * keyed on `targetLanguage` alone), and which habits are on record (`emphasis`, so
+ * the panel can lead with a standing mistake instead of burying it). One type, so
+ * what the prompt is allowed to be told and what a caller can pass cannot drift apart.
+ */
+export interface ExtractionConfig extends PersonaConfig {}
 
 // --------------------------------------------------------------- mistake tables
 
@@ -391,6 +390,20 @@ export function annotateRecurrence(
     return { ...g, recurrence: { seenInSessions: h.priorSessions + 1, firstDate: h.firstDate } };
   });
   return { review: { ...review, grammar }, recurred };
+}
+
+/**
+ * Lead with the habits (the recurrence half): grammar items that carry a real
+ * `recurrence` go first, so the panel opens on the thing the learner has now said
+ * twice. Order only — no item is added, dropped, reworded or re-scored, and the
+ * two groups keep their existing relative order. An unrecurred review is returned
+ * untouched, so this can never reorder something it has no evidence about.
+ */
+export function prioritiseRecurring(review: Review): Review {
+  const recurring = review.grammar.filter((g) => g.recurrence);
+  if (recurring.length === 0) return review;
+  const firstTime = review.grammar.filter((g) => !g.recurrence);
+  return { ...review, grammar: [...recurring, ...firstTime] };
 }
 
 // --------------------------------------------------------------- stopword lists

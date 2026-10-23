@@ -5,15 +5,41 @@
  * is a test double, not the persona showcase). When the prompt carries a
  * `<<RECALLED>>` block (the server only inserts one when it genuinely retrieved
  * stored facts), the reply references the first recalled item verbatim, so
- * integration tests can assert memoryReferenced behaviour end-to-end.
+ * integration tests can assert memoryReferenced behaviour end-to-end. When it
+ * carries a `<<PENDING_FOLLOW_UPS>>` block the reply asks about that event, and
+ * quotes the stored turn — Echo is allowed to quote it because the quote IS the
+ * stored row; the live persona is told not to read the learner's words back at
+ * them, because that is how a friend sounds nothing like a database.
  *
  * The review phase is NOT modelled here: review extraction has a deterministic
  * heuristic path (src/review/extract.ts) that runs for every backend; the LLM
  * review pass is an enhancement only the live backends (Proxy/Bedrock/OpenAI/Gemini) add.
  */
-import { ChatMessage, LLM, RECALL_MARKER } from "./types.js";
+import { ChatMessage, LLM, FOLLOW_UP_MARKER, RECALL_MARKER } from "./types.js";
 
-export { RECALL_MARKER };
+export { FOLLOW_UP_MARKER, RECALL_MARKER };
+
+/** One parsed follow-up line from the prompt block (see `followUpBlock`). */
+interface ParsedFollowUp {
+  topic: string;
+  saidOn: string;
+  quote: string;
+}
+
+/**
+ * Read the machine-readable follow-up lines back out of a system prompt. Echo is a
+ * test double, so the format is the contract: `- <topic> · <yyyy-mm-dd> · "<verbatim>"`.
+ */
+export function parseFollowUpLines(system: string): ParsedFollowUp[] {
+  const idx = system.indexOf(FOLLOW_UP_MARKER);
+  if (idx === -1) return [];
+  const out: ParsedFollowUp[] = [];
+  for (const line of system.slice(idx).split("\n")) {
+    const m = /^-\s+([a-z][a-z-]*)\s+·\s+(\d{4}-\d{2}-\d{2})\s+·\s+"(.+)"$/.exec(line.trim());
+    if (m) out.push({ topic: m[1]!, saidOn: m[2]!, quote: m[3]! });
+  }
+  return out;
+}
 
 export class EchoLLM implements LLM {
   readonly name = "echo" as const;
@@ -34,6 +60,15 @@ export class EchoLLM implements LLM {
   private chatReply(system: string, messages: ChatMessage[]): string {
     const last = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
     const lower = last.toLowerCase();
+
+    // Follow-up beat (cross-session follow-ups) first: the server only puts the block on the message
+    // that OPENS a session, so this is the "welcome back, how did it go" line —
+    // deterministic proof of it without a live model, which is what the offline
+    // `SALA_LLM=echo` QA replay and the test suite assert on.
+    const [followUp] = parseFollowUpLines(system);
+    if (followUp) {
+      return `Welcome back! How did the ${followUp.topic} go? You said on ${followUp.saidOn}: "${followUp.quote}" — tell me about it.`;
+    }
 
     // Memory beat: reference the first genuinely recalled item.
     const recallIdx = system.indexOf(RECALL_MARKER);

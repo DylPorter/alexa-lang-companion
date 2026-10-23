@@ -50,15 +50,27 @@ export function localeFor(lang: string): string {
 }
 
 export interface SttCallbacks {
+  /**
+   * Live transcript while the learner is talking: every segment committed so far plus
+   * the one in flight. Fired repeatedly — this is the streaming surface the pane shows
+   * as a growing user bubble.
+   */
   onInterim: (text: string) => void;
+  /**
+   * The turn, finalised. Fired ONCE, and only after the learner stopped the mic — never
+   * because the browser's own silence detector ended the session. That distinction is
+   * the whole point: `continuous = false` used to let the browser decide when the
+   * learner had finished speaking, which cut them off and submitted the fragment.
+   */
   onFinal: (text: string) => void;
   /** hard failure (permission denied, service unreachable…) */
   onFail: (message: string) => void;
-  /** recognition ended with no final transcript (silence / manual stop) */
+  /** the learner stopped the mic and nothing was heard */
   onEmpty: () => void;
 }
 
 export interface SttHandle {
+  /** The learner's "that's all": commit what was heard and release the mic. */
   stop: () => void;
 }
 
@@ -70,59 +82,115 @@ const FAIL_MESSAGES: Record<string, string> = {
   aborted: "Recognition aborted — text chat still works.",
 };
 
+/**
+ * Chromium ends a continuous session by itself after a long enough gap. Relaunching is
+ * invisible and the transcript keeps growing, so a pause mid-sentence costs nothing. The
+ * cap exists so a muted mic or a broken service cannot spin forever: past it we say what
+ * happened rather than keep pretending to listen.
+ */
+const MAX_AUTO_RESTARTS = 5;
+
 export function startStt(locale: string, cb: SttCallbacks): SttHandle | null {
   const Ctor = srConstructor();
   if (!Ctor) {
     cb.onFail("This browser has no Web Speech API — text chat still works.");
     return null;
   }
-  const rec = new Ctor();
-  rec.lang = locale;
-  rec.continuous = false; // auto-stops on silence
-  rec.interimResults = true;
-  rec.maxAlternatives = 1;
 
-  let finalText = "";
+  // Assigned by `begin()` before anything can read it; the handlers close over this.
+  let rec!: SpeechRecognitionLike;
+  /** Final segments so far, joined. Survives a relaunch, so one turn can span several. */
+  let heard = "";
+  /** The in-flight segment. Kept so stopping the mic mid-word does not throw it away. */
+  let pending = "";
   let settled = false;
+  let userStopped = false;
+  let restarts = 0;
 
-  rec.onresult = (e) => {
-    let interim = "";
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const r = e.results[i];
-      const t = r[0]?.transcript ?? "";
-      if (r.isFinal) finalText += t;
-      else interim += t;
-    }
-    if (interim) cb.onInterim(interim);
-    if (finalText && !settled) {
-      settled = true;
-      cb.onFinal(finalText.trim());
-    }
-  };
-  rec.onerror = (e) => {
-    const code = e.error ?? "unknown";
-    // 'no-speech' is not an error state for us — onend decides.
-    if (code === "no-speech") return;
-    if (!settled) {
-      settled = true;
-      cb.onFail(FAIL_MESSAGES[code] ?? `Speech recognition failed (${code}) — text chat still works.`);
-    }
-  };
-  rec.onend = () => {
+  const joined = () => `${heard}${heard && pending ? " " : ""}${pending}`.trim();
+
+  const settle = () => {
     if (settled) return;
     settled = true;
-    if (finalText.trim()) cb.onFinal(finalText.trim());
+    const text = joined();
+    if (text) cb.onFinal(text);
     else cb.onEmpty();
   };
 
+  const fail = (message: string) => {
+    if (settled) return;
+    settled = true;
+    cb.onFail(message);
+  };
+
+  const begin = () => {
+    rec = new Ctor();
+    rec.lang = locale;
+    rec.continuous = true; // the learner stops talking; the browser does not decide that
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+
+    rec.onresult = (e) => {
+      pending = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const t = (e.results[i]?.[0]?.transcript ?? "").trim();
+        if (!t) continue;
+        if (e.results[i]?.isFinal) {
+          heard = `${heard} ${t}`.trim();
+          pending = "";
+        } else {
+          pending = t;
+        }
+      }
+      const text = joined();
+      // No commit here, ever. Streaming text is not a turn the learner agreed to.
+      if (text) cb.onInterim(text);
+    };
+
+    rec.onerror = (e) => {
+      const code = e.error ?? "unknown";
+      // 'no-speech' is not a failure — onend decides what happens next.
+      if (code === "no-speech") return;
+      // 'aborted' right after the learner pressed stop is our own teardown talking; let
+      // onend deliver the transcript instead of showing a failure over a valid turn.
+      if (code === "aborted" && userStopped) return;
+      fail(FAIL_MESSAGES[code] ?? `Speech recognition failed (${code}) — text chat still works.`);
+    };
+
+    rec.onend = () => {
+      if (settled) return;
+      if (userStopped) {
+        settle();
+        return;
+      }
+      if (restarts >= MAX_AUTO_RESTARTS) {
+        // Give up honestly: keep what was actually heard, or report the dropout.
+        if (joined()) settle();
+        else fail("Speech capture kept dropping out in this browser — text chat still works.");
+        return;
+      }
+      restarts++;
+      try {
+        rec.start();
+      } catch {
+        // Throws if the previous session has not released the mic yet. Not a failure:
+        // the next onend, or the learner's stop, is what we are waiting on.
+      }
+    };
+  };
+
   try {
+    begin();
     rec.start();
   } catch {
-    if (!settled) {
-      settled = true;
-      cb.onFail("Could not start speech recognition — text chat still works.");
-    }
+    fail("Could not start speech recognition — text chat still works.");
     return null;
   }
-  return { stop: () => rec.stop() };
+
+  return {
+    stop: () => {
+      userStopped = true;
+      rec.stop(); // → onend → settle()
+    },
+  };
 }

@@ -4,12 +4,39 @@
  * fields; nothing is invented client-side (honesty rules).
  */
 
+/**
+ * One thing the learner said they were waiting for, in an EARLIER session. Server-side
+ * this is a `followups` row; `quote` is their own turn verbatim, so the panel can show
+ * the memory rather than a paraphrase of it.
+ */
+export interface FollowUp {
+  topic: string;
+  quote: string;
+  saidAt: string;
+  language: string;
+}
+
+/** One grammar habit counted across past sessions (`session_mistakes` rows). */
+export interface FocusHabit {
+  mistakeId: string;
+  label: string;
+  /** DISTINCT past sessions — never the live one. */
+  sessions: number;
+  lastDate: string;
+}
+
 export interface ChatResult {
   reply: string;
   sessionId: string;
   /** True ONLY when stored facts were genuinely retrieved server-side. */
   memoryReferenced: boolean;
   isNewSession: boolean;
+  /**
+   * Follow-ups Sala was handed on THIS turn. Non-empty only on the message that opened
+   * the session, and only once per event — so a "welcome back" appears on the opener
+   * and nowhere else.
+   */
+  followUps: FollowUp[];
   /**
    * The language Sala is speaking for this reply. It can differ from what the client
    * asked for: the learner may have changed it by saying so.
@@ -51,6 +78,10 @@ export interface PastSessionRef {
 export interface RecallResult {
   activities: Activity[];
   pastSessions: PastSessionRef[];
+  /** What Sala is still waiting to ask about. Not filtered by `recall`'s query. */
+  followUps?: FollowUp[];
+  /** Habits counted across past sessions; what the chat turns are quietly drilling. */
+  focus?: FocusHabit[];
 }
 
 export interface VocabItem {
@@ -93,6 +124,12 @@ export interface Review {
 export interface EndSessionResult {
   review: Review;
   extractionPath: "heuristic" | "llm";
+  /**
+   * Anticipated events this session ADDED to the pending list — what Sala will open the
+   * next session with. Empty means nothing new was stored, and the panel then says
+   * nothing about the future (honesty rule: no claim without a row).
+   */
+  followUps?: FollowUp[];
 }
 
 export interface SessionRecord {

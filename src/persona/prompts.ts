@@ -7,7 +7,7 @@
  * is a testable promise — tests/persona.test.ts asserts presence, and the A2 QA
  * checklist re-checks them against live output.
  */
-import { RECALL_MARKER } from "../llm/types.js";
+import { FOLLOW_UP_MARKER, RECALL_MARKER } from "../llm/types.js";
 import { languageName } from "./languages.js";
 
 export interface PersonaConfig {
@@ -30,6 +30,22 @@ export interface PersonaConfig {
    * in would be describing a conversation that did not happen.
    */
   sessionLanguages?: string[];
+  /**
+   * Anticipated events the learner mentioned in an EARLIER session (cross-session follow-ups),
+   * straight from the `followups` table: `quote` is their own turn, verbatim, and
+   * `saidAt` is when they said it. The server only ever fills this on the message
+   * that OPENS a session, so this is "welcome back", not a question repeated every
+   * turn. Empty/omitted ⇒ no FOLLOW-UP section is written at all.
+   */
+  followUps?: Array<{ topic: string; quote: string; saidAt: string; language: string }>;
+  /**
+   * Mistake classes the learner has hit in 2+ different past sessions (the cross-session follow-up work,
+   * the second half). Counts come from `session_mistakes`, never from the model.
+   * Feeds both prompts: the chat one as a TEACHING POSTURE (practise it, never say
+   * it out loud), the review one as a PRIORITY (lead with it, verbatim rules still
+   * apply — a point the learner did not actually make gets dropped).
+   */
+  emphasis?: Array<{ label: string; sessions: number; lastDate: string }>;
 }
 
 /**
@@ -66,7 +82,54 @@ MEMORY
   if (recalledContext.length > 0) {
     prompt += `\n\n${RECALL_MARKER}\n${recalledContext.map((c) => `- ${c}`).join("\n")}`;
   }
+  if (cfg.followUps?.length) {
+    prompt += `\n\n${followUpBlock(cfg.followUps, target)}`;
+  }
+  if (cfg.emphasis?.length) {
+    prompt += `\n\n${emphasisBlock(cfg.emphasis)}`;
+  }
   return prompt;
+}
+
+/**
+ * The follow-up block — machine-readable on purpose. Each line is
+ * `<topic> · <date said> · "<verbatim learner turn>"`, and EchoLLM plus the tests
+ * read the topic and the quote out of it instead of pattern-matching prose. The
+ * verbatim rule is repeated inside the block because this is the section most
+ * likely to be over-remembered by a chatty model.
+ */
+export function followUpBlock(
+  followUps: NonNullable<PersonaConfig["followUps"]>,
+  target: string,
+): string {
+  const lines = followUps
+    .map((f) => `- ${f.topic} · ${f.saidAt.slice(0, 10)} · "${f.quote}"`)
+    .join("\n");
+  return `${FOLLOW_UP_MARKER}
+The learner ended a PREVIOUS session with something coming up. These are their own words, with the date they said them:
+${lines}
+
+HOW TO USE THEM
+- Open this reply by asking about ONE of them, in ${target}, the way a friend would: "so — how did the interview go?" Do not read the quote back at them.
+- The question assumes the moment has passed. If their answer says otherwise, or it clearly has not happened yet, take it back in one clause ("still ahead of you?") and move on — never argue with them about their own calendar.
+- Ask about at most one per reply. If the learner already told you how it went in an earlier turn, do not ask again.
+- HARD RULE: only these events. Never invent one, never guess how it went, never mention a date.`;
+}
+
+/**
+ * The emphasis block — what to WORK on, not what to say. Counts are read off
+ * `session_mistakes` rows; the model is handed the number so its attention scales
+ * with it, and is told twice that it must not be spoken.
+ */
+export function emphasisBlock(emphasis: NonNullable<PersonaConfig["emphasis"]>): string {
+  const lines = emphasis.map((e) => `- "${e.label}" — ${e.sessions} past sessions, most recent ${e.lastDate.slice(0, 10)}`).join("\n");
+  return `WORKING ON — habits that keep coming back
+The learner has made these mistake classes in more than one PREVIOUS session:
+${lines}
+
+HOW TO USE THEM
+- Give these extra care THIS session: recast them every single time they appear, and when the conversation allows it, steer one turn toward them and ask the learner to say one or two sentences of that shape back to you. Keep it playful — a game between friends, never an exercise sheet.
+- HARD RULE: these lines are what to practise, NOT what to say. Never name a rule, never mention a session count, never tell the learner they "keep" making something. The review at the end of the session is where the pattern gets shown, with the numbers that back it.`;
 }
 
 /**
@@ -84,10 +147,19 @@ export function reviewSystemPrompt(cfg: PersonaConfig): string {
           .map(languageName)
           .join(", ")}, switching partway when the learner asked. Judge each of the learner's own sentences in the language they actually said it in, and mention the switch in the summary. Never attribute a sentence to a language the learner did not use it in.\n`
       : "";
+  // Issue #3, second half: put the learner's standing habits first. The counts come
+  // from stored rows, and they buy priority in the list — nothing more. A class the
+  // learner did not actually slip into in THIS transcript still fails verbatim
+  // validation, so this cannot manufacture a grammar point.
+  const emphasis = cfg.emphasis?.length
+    ? `\nThe learner has made these mistake classes in more than one earlier session: ${cfg.emphasis
+        .map((e) => `"${e.label}" (${e.sessions} past sessions)`)
+        .join(", ")}. If one of them appears in this transcript, make it your FIRST grammar point and write the explanation for someone who has already been told once — say what the pattern is, not just how to fix this sentence. If none of them appears, ignore this paragraph entirely.\n`
+    : "";
   return `You generate an end-of-session language review for a learner of ${target}.
 
 You receive the full transcript of one conversation session between the learner and Sala. Produce review material that derives EXCLUSIVELY from what the learner actually said in this transcript.
-${mixed}
+${mixed}${emphasis}
 Write the review in clear simple ${reviewLang} (the learner's own language — the review panel is for learning, not immersion).
 
 Respond with ONLY a JSON object, no prose:

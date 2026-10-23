@@ -101,9 +101,43 @@ tools."*
 - [ ] **Open Source ($5k, 1 winner)** — VERIFIED (via the firetv rules read): requires a **new
   additional OSS project or a contribution to an existing public repo made during the hackathon
   window (31 Aug – 23 Oct), alongside the primary submission.** MIT-licensing this repo does NOT
-  qualify. **Decision: skip.** Plan changes only if a genuine upstream PR emerges from the build
-  (candidates so far: an SDK doc patch on empty-`allowedOrigins` semantics). Never fabricate a
-  contribution.
+  qualify — the side track wants something *additional*. **Decision: skip.** Plan changes only if a
+  genuine upstream PR emerges from the build (candidates so far: an SDK doc patch on
+  empty-`allowedOrigins` semantics). Never fabricate a contribution.
+
+  Re-checked against GitHub 2026-10-23 (Dylan asked whether we could enter this and whether to
+  relicense Sala AGPL-3.0). What actually exists on this machine, with dates from the API:
+
+  | repo | visibility | created | last push | licence |
+  |---|---|---|---|---|
+  | `DylPorter/alexa-lang-companion` (Sala, the primary submission) | PUBLIC | 2026-10-19 | 2026-10-23 | MIT |
+  | `DylPorter/teledesk` | PUBLIC | 2026-05-20 | 2026-10-20 | `LICENSE` present (MIT) |
+  | `DylPorter/claudish-to-english-action` | PUBLIC | 2026-08-10 | 2026-10-21 | `LICENSE` present (MIT) |
+  | `DylPorter/pacl` | PUBLIC | — | 2026-08-11 | AGPL-3.0 |
+
+  **Neither candidate is "new in the window"**: both pre-date 31 Aug. What they do have is real
+  in-window work on already-public repos — teledesk has 117 commits since 31 Aug (pushed 20 Oct),
+  claudish was pushed 21 Oct. So the honest reading is: the "new additional OSS project" clause is
+  not met by anything I have, and the "a contribution (a branch, a fork, or a pull request) to a
+  public repository" clause is arguable — the clause reads most naturally as contributing to
+  somebody else's repo, and using my own pre-existing repo is the kind of stretch a judge can read
+  either way. Unverified: how the judges read it. There is no licence requirement beyond "include an
+  open-source license", so **relicensing Sala to AGPL-3.0 buys nothing here** — and it would be a
+  real change for Alan and any downstream user, three hours before the deadline. Sala stays MIT.
+
+  If Dylan wants the entry anyway, the strongest available filing is teledesk as the in-window
+  contribution (repo URL + GitHub username + what landed and why it matters), described exactly as
+  above and not as a new project. Draft text for that:
+
+  > **What I did:** continued building `teledesk` (https://github.com/DylPorter/teledesk) through
+  > the hackathon window — 117 commits since 31 Aug, most recent 20 Oct. It drives Claude Code from
+  > a phone over Telegram using the plan's own auth (no API key), running as a systemd service on
+  > your machine, with a session wiretap that mirrors an in-progress run into a topic as it happens.
+  > **How it works:** a local bridge subscribes to the harness's own event stream and re-emits it as
+  > chunked Telegram messages, so a long unattended run stays readable and interruptible from a
+  > phone. **Why it matters:** it is the same problem the Alexa+ track is about — a capable model
+  > with a surface you can actually reach — solved for the developer's phone instead of the
+  > living room. MIT-licensed, `LICENSE` at the repo root.
 
 ## Human step — gates AWS Builder only
 

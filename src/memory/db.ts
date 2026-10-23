@@ -71,6 +71,37 @@ export interface Review {
   summary: string;
 }
 
+/**
+ * A pending cross-session follow-up (cross-session follow-ups), exactly as stored. `quote` is the
+ * learner's OWN turn, verbatim — the whole feature rests on Sala being able to say
+ * "you said X" and mean it, so nothing here is ever a paraphrase.
+ */
+export interface FollowUpRow {
+  id: number;
+  /** Canonical topic key ("interview") — the dedupe handle, not display text. */
+  topic: string;
+  quote: string;
+  /** Language the quote arrived in (the reply is in the NEW session's language). */
+  language: string;
+  /** When the learner said it, from the transcript row (ISO). */
+  saidAt: string;
+  /** Session that ended with this still unanswered. */
+  sessionId: string;
+}
+
+/**
+ * One mistake class the learner has hit in several DIFFERENT sessions, counted from
+ * `session_mistakes`. `sessions` never includes a live session — the rows for the
+ * conversation in progress do not exist until `endSession` writes them.
+ */
+export interface RecurringMistake {
+  mistakeId: string;
+  label: string;
+  sessions: number;
+  /** Most recent recorded date for this identity (ISO). */
+  lastDate: string;
+}
+
 export interface RecallResult {
   activities: Activity[];
   pastSessions: Array<{
@@ -130,16 +161,43 @@ END;
 -- simplicity), and it keeps the answer explainable on camera.
 -- Additive and idempotent: existing sala.db files open unchanged with old
 -- sessions intact.
+-- point is the human-readable label as it was written, kept on the row so a
+-- later session can name the habit without parsing another table's JSON. Rows
+-- written before it existed hold '' and the reader falls back to the identity.
 CREATE TABLE IF NOT EXISTS session_mistakes (
   session_id TEXT NOT NULL REFERENCES sessions(id),
   account_id TEXT NOT NULL,
   mistake_id TEXT NOT NULL,
   language TEXT NOT NULL,
+  point TEXT NOT NULL DEFAULT '',
   recorded_at TEXT NOT NULL,
   PRIMARY KEY (session_id, mistake_id)
 );
 CREATE INDEX IF NOT EXISTS idx_session_mistakes
   ON session_mistakes(account_id, mistake_id, recorded_at);
+-- Cross-session follow-up (cross-session follow-ups): something the learner said they were
+-- waiting for, stored as their own words so the ask next time is a memory and
+-- not a guess. offered_at is written ONCE, when Sala was handed the line:
+-- an event gets asked about a single time, so a three-week-old interview does
+-- not come back forever. The partial unique index is the dedupe — mentioning
+-- the same topic in four sessions still leaves one pending question, and
+-- SQLite enforces it rather than the code hoping it does.
+CREATE TABLE IF NOT EXISTS followups (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id TEXT NOT NULL,
+  session_id TEXT NOT NULL REFERENCES sessions(id),
+  topic TEXT NOT NULL,
+  quote TEXT NOT NULL,
+  language TEXT NOT NULL DEFAULT '',
+  said_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  offered_at TEXT,
+  offered_session TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_followups_pending
+  ON followups(account_id, topic) WHERE offered_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_followups_account
+  ON followups(account_id, offered_at, said_at);
 `;
 
 export class MemoryStore {
@@ -165,11 +223,17 @@ export class MemoryStore {
    * have to keep opening, or the demo loses its own history.
    */
   private migrate(): void {
-    const cols = new Set(
-      (this.db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>).map((c) => c.name),
-    );
-    if (!cols.has("language")) {
+    const cols = (table: string) =>
+      new Set(
+        (this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
+          (c) => c.name,
+        ),
+      );
+    if (!cols("messages").has("language")) {
       this.db.exec(`ALTER TABLE messages ADD COLUMN language TEXT NOT NULL DEFAULT ''`);
+    }
+    if (!cols("session_mistakes").has("point")) {
+      this.db.exec(`ALTER TABLE session_mistakes ADD COLUMN point TEXT NOT NULL DEFAULT ''`);
     }
   }
 
@@ -233,12 +297,12 @@ export class MemoryStore {
         .run(now, summary, JSON.stringify(review), id, this.accountId);
       const ins = this.db.prepare(
         `INSERT OR IGNORE INTO session_mistakes
-           (session_id, account_id, mistake_id, language, recorded_at)
-         VALUES (?, ?, ?, ?, ?)`,
+           (session_id, account_id, mistake_id, language, point, recorded_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       );
       for (const g of review.grammar) {
         if (!g.mistakeId) continue;
-        ins.run(id, this.accountId, g.mistakeId, language, now);
+        ins.run(id, this.accountId, g.mistakeId, language, g.point ?? "", now);
       }
     })();
   }
@@ -261,6 +325,140 @@ export class MemoryStore {
       )
       .get(this.accountId, mistakeId, excludeSessionId) as { n: number; first_at: string | null };
     return { priorSessions: row.n ?? 0, firstDate: row.first_at ?? null };
+  }
+
+  // ---------------------------------------------------- follow-ups + emphasis
+  // Both halves of the cross-session feature read the SAME two tables (`followups`,
+  // `session_mistakes`) that the review panel already reads, so what Sala says in a
+  // later session is provable against a row the user can see with `recall`.
+
+  /**
+   * Store one anticipated event the learner mentioned. Returns the new row's id, or
+   * `null` when the topic is already pending — the partial unique index makes that a
+   * fact about the database rather than a check that races itself.
+   */
+  recordFollowUp(input: {
+    sessionId: string;
+    topic: string;
+    quote: string;
+    language: string;
+    saidAt: string;
+  }): number | null {
+    const info = this.db
+      .prepare(
+        `INSERT OR IGNORE INTO followups
+           (account_id, session_id, topic, quote, language, said_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        this.accountId,
+        input.sessionId,
+        input.topic,
+        input.quote,
+        input.language,
+        input.saidAt,
+        new Date().toISOString(),
+      );
+    return info.changes === 1 ? Number(info.lastInsertRowid) : null;
+  }
+
+  /**
+   * What Sala is waiting to ask about, newest first. Rows already offered are gone
+   * for good: one event, one question. `excludeSessionId` keeps a session from being
+   * handed its own news back if a client ever reuses an id.
+   */
+  pendingFollowUps(opts: { excludeSessionId?: string; limit?: number } = {}): FollowUpRow[] {
+    const limit = Math.min(Math.max(opts.limit ?? 3, 1), 10);
+    const rows = this.db
+      .prepare(
+        `SELECT id, topic, quote, language, said_at, session_id FROM followups
+          WHERE account_id = ? AND offered_at IS NULL
+            AND session_id != COALESCE(?, '')
+          ORDER BY said_at DESC, id DESC LIMIT ?`,
+      )
+      .all(this.accountId, opts.excludeSessionId ?? null, limit) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r.id as number,
+      topic: r.topic as string,
+      quote: r.quote as string,
+      language: (r.language as string) ?? "",
+      saidAt: r.said_at as string,
+      sessionId: r.session_id as string,
+    }));
+  }
+
+  /**
+   * Record that these follow-ups were handed to the model on a turn — the single
+   * write that stops them being offered again. Named `offered`, not `asked`: what
+   * the database can prove is that Sala was given the line. Whether the model then
+   * actually asked is in the reply text, and the demo says so out loud.
+   */
+  markFollowUpsOffered(ids: number[], sessionId: string): void {
+    if (ids.length === 0) return;
+    const now = new Date().toISOString();
+    const upd = this.db.prepare(
+      `UPDATE followups SET offered_at = ?, offered_session = ?
+        WHERE account_id = ? AND id = ? AND offered_at IS NULL`,
+    );
+    this.db.transaction(() => {
+      for (const id of ids) upd.run(now, sessionId, this.accountId, id);
+    })();
+  }
+
+  /**
+   * Mistake classes stored in at least `minSessions` DISTINCT earlier sessions,
+   * busiest habit first. This is the "2+ mistakes about the same thing across
+   * different sessions" gate, and it can only ever see ended sessions — the live
+   * transcript is not in `session_mistakes` yet, so no count here claims the learner
+   * has already repeated something this conversation.
+   *
+   * The language filter reads the identity's own prefix (`canonicalMistakeId` writes
+   * `en-…`, `fr-…`), not the session's stored language, because a session that
+   * switched halfway through ends tagged with only the language it finished in.
+   */
+  recurringMistakes(opts: {
+    language?: string;
+    minSessions: number;
+    limit?: number;
+  }): RecurringMistake[] {
+    const limit = Math.min(Math.max(opts.limit ?? 3, 1), 10);
+    const lang = opts.language?.toLowerCase().slice(0, 2);
+    const rows = this.db
+      .prepare(
+        `SELECT mistake_id, COUNT(DISTINCT session_id) AS n, MAX(recorded_at) AS last_at
+           FROM session_mistakes
+          WHERE account_id = ? AND (? IS NULL OR substr(mistake_id, 1, 2) = ?)
+          GROUP BY mistake_id
+         HAVING n >= ?
+          ORDER BY n DESC, last_at DESC LIMIT ?`,
+      )
+      .all(this.accountId, lang ?? null, lang ?? null, opts.minSessions, limit) as Array<{
+      mistake_id: string;
+      n: number;
+      last_at: string;
+    }>;
+    return rows.map((r) => ({
+      mistakeId: r.mistake_id,
+      label: this.mistakeLabel(r.mistake_id),
+      sessions: r.n,
+      lastDate: r.last_at,
+    }));
+  }
+
+  /**
+   * Label for a mistake identity: the prose that was written with the most recent
+   * row, or — for rows recorded before `point` existed — the identity itself made
+   * readable. Never invented: there is no table of pretty names for mistake ids here.
+   */
+  private mistakeLabel(mistakeId: string): string {
+    const row = this.db
+      .prepare(
+        `SELECT point FROM session_mistakes
+          WHERE account_id = ? AND mistake_id = ? AND point <> ''
+          ORDER BY recorded_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(this.accountId, mistakeId) as { point: string } | undefined;
+    return row?.point ?? mistakeId.replace(/^[a-z]{2}-/, "").replace(/-/g, " ");
   }
 
   /**
@@ -288,6 +486,37 @@ export class MemoryStore {
     return out;
   }
 
+  /**
+   * Delete this account's stored history — sessions, transcripts, logged activities,
+   * mistake rows and pending follow-ups (the cross-session follow-up work demo affordance: start clean between
+   * takes without reaching for `rm data/sala.db`). One transaction, scoped to
+   * `account_id` like every read.
+   *
+   * The FTS indexes are rebuilt from the content tables afterwards: an external-content
+   * index does NOT follow deletes on its own, and a stale one would let `recall` answer
+   * from rows that no longer exist — the one failure mode this store must not have.
+   */
+  clearAll(): Record<string, number> {
+    const tables = [
+      "followups",
+      "session_mistakes",
+      "messages",
+      "activities",
+      "sessions",
+    ] as const;
+    const counts: Record<string, number> = {};
+    this.db.transaction(() => {
+      for (const t of tables) {
+        counts[t] = this.db
+          .prepare(`DELETE FROM ${t} WHERE account_id = ?`)
+          .run(this.accountId).changes;
+      }
+      this.db.exec(`INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')`);
+      this.db.exec(`INSERT INTO activities_fts(activities_fts) VALUES ('rebuild')`);
+    })();
+    return counts;
+  }
+
   // ----------------------------------------------------------------- messages
 
   /**
@@ -301,13 +530,24 @@ export class MemoryStore {
       .run(language, sessionId, this.accountId);
   }
 
-  addMessage(sessionId: string, role: "user" | "assistant", content: string, language = ""): void {
+  /**
+   * `createdAt` defaults to now. It is settable for one reason — the demo seeder
+   * writes a scripted past — and the FTS trigger fires on the INSERT either way, so a
+   * back-dated row is searchable exactly like a live one.
+   */
+  addMessage(
+    sessionId: string,
+    role: "user" | "assistant",
+    content: string,
+    language = "",
+    createdAt = new Date().toISOString(),
+  ): void {
     this.db
       .prepare(
         `INSERT INTO messages (session_id, account_id, role, content, created_at, language)
          VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(sessionId, this.accountId, role, content, new Date().toISOString(), language);
+      .run(sessionId, this.accountId, role, content, createdAt, language);
   }
 
   getTranscript(sessionId: string): MessageRow[] {

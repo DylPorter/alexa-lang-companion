@@ -22,9 +22,18 @@ QA evidence: [docs/a2-qa.md](docs/a2-qa.md). Submission checklist: [docs/SUBMISS
 - **Remembers your life.** `log_activity` stores what you did. `chat` genuinely retrieves stored
   material (FTS5 keyword + recency) and weaves it in only when relevant. The sim shows a
   "remembered" badge **only** when the server flag `memoryReferenced` is true.
+- **Follows up on what you were waiting for.** Say "I'm stressed about my job interview on
+  Monday" and the NEXT session opens with "so — how did the interview go?" Each event is asked
+  about once, ever; the question carries the date you said it and a quote of your own words.
+- **Works the habits you keep falling into.** The same grammar class in two or more past
+  sessions gets recast every time it appears, gets a turn of deliberate practice, and leads the
+  end-of-session review — with the count that backs it. Sala is told twice it may never say the
+  number out loud, so it reads as a friend who pays attention, not a scoreboard.
 - **Never fabricates.** Ask about something that was never logged and Sala says it has nothing
   stored. Review items are extracted from the actual transcript, and every model-proposed example
-  is validated in code for verbatim containment before it can appear.
+  is validated in code for verbatim containment before it can appear. The follow-up detector is
+  held to the same bar: it only reads YOUR turns, needs an event noun you actually named, and
+  vetoes any sentence that sounds already finished — missing a question beats inventing one.
 - **Ends sessions with a review** (`end_session`): 4-6 vocabulary items and 1-2 grammar points,
   each carrying your own sentence as the example, plus a summary. This is the product's money shot.
 - **Changes language when you ask.** Mid-session, out loud: "let's speak French." The server
@@ -98,16 +107,19 @@ cards on real Alexa+ hardware. The web sim's review panel is that card, prototyp
 
 | tool | in | out |
 |---|---|---|
-| `chat` | `{message, sessionId?, targetLanguage?}` | `{reply, sessionId, memoryReferenced, isNewSession, language, languageName, languageChanged}` |
+| `chat` | `{message, sessionId?, targetLanguage?}` | `{reply, sessionId, memoryReferenced, isNewSession, language, languageName, languageChanged, followUps[]}` |
 | `log_activity` | `{text, when?}` | `{id}` |
-| `recall` | `{query?, since?, limit?}` | `{activities[], pastSessions[]}` |
-| `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}, extractionPath}` |
+| `recall` | `{query?, since?, limit?}` | `{activities[], pastSessions[], followUps[], focus[]}` |
+| `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}, extractionPath, followUps[]}` |
 | `set_language` | `{sessionId, language}` | `{sessionId, previousLanguage, language, languageName, changed}` |
 | `list_sessions` | `{}` | `{sessions[{id, date, language, languages[], summary, review}]}` |
 
 Every tool declares typed zod input AND output schemas, so clients get `structuredContent` on
 every success. `memoryReferenced` is true only when stored facts were genuinely retrieved and
-injected into the model prompt. `vocabulary[].example` and `grammar[].example` are always the
+injected into the model prompt — which includes the case where the only thing retrieved was a
+question it is holding for you. `followUps[]` is what that turn was offered from (verbatim quote,
+date, language); `focus[]` is the habits being weighted, each with `sessions` from
+`COUNT(DISTINCT session_id)` over stored mistake rows. `vocabulary[].example` and `grammar[].example` are always the
 learner's own sentences, displayed verbatim. Pass `sessionId` back on every follow-up turn.
 `chat` without one starts a new Sala session. `targetLanguage` is only for OPENING a session —
 after that the server owns the language, because a device that re-asserted its picker every turn
@@ -202,8 +214,14 @@ their stored reviews, EN/DE/FR language picker, and a persistent "Simulated Alex
 label (the rules require the video to show the simulation clearly).
 
 Voice mode is half-duplex with a TTS-gated mic (state machine in `sim/src/state/voiceMachine.ts`,
-unit-tested): tap the mic, speak, tap again or let silence end it, Sala replies by voice, and the
-mic re-arms only after speech finishes. STT uses the browser Web Speech API. TTS uses browser
+unit-tested): tap the mic, speak, **tap again when you have said your last word**, Sala replies by
+voice, and the mic re-arms only after speech finishes. You decide when a turn ends — capture runs
+`continuous: true` and streams your words onto the screen as you say them, keeping listening
+through pauses, so nothing is ever submitted because the browser's silence detector decided you
+were done. `sim/src/voice/stt.test.ts` pins that a final ASR segment is not a commit; only the
+stop button is. The text box stays live while a reply is in flight, so you can type the next line
+(or correct the last one) during the wait — only Send waits, and it says so. STT uses the browser
+Web Speech API. TTS uses browser
 voices where they exist and a local Piper neural TTS server (`scripts/piper-tts-server.mjs`,
 loopback-only) where they don't, which is the Linux/Chromium reality.
 
@@ -217,7 +235,33 @@ column not rendered at all. Press `d` to switch either way without a reload, so 
 happen live on camera. `?device=0` (or no param) is the **console view**: admin column, review and
 past-session panes, everything.
 
-This is emphasis, not a second app. Same MCP client, same server, same five tools, same protocol
+### The two filming buttons
+
+Under **Past sessions**:
+
+- **✕ Clear all history** wipes every stored session, message, activity, mistake row and pending
+  question for this user. A fresh clone is already empty — this is how you get back to empty
+  between takes without hunting for the database file.
+- **⤓ Load prior history** replaces the history with four scripted sessions from the past nine
+  days (climbing wall, gym with his brother, a French market trip, and a job interview he was
+  nervous about), closed through the *real* `end_session` pipeline: reviews, mistake identities,
+  recurrence and the pending follow-up come out of the same code your own conversations go
+  through, then get back-dated. After it loads, the next session opens by asking how the
+  interview went and the review leads with the past-tense habit that appeared in three sessions.
+
+```sh
+curl -X POST http://127.0.0.1:3000/demo/load-history \
+  -H 'content-type: application/json' -H 'origin: http://localhost:5173' -d '{}'
+curl -X POST http://127.0.0.1:3000/demo/clear-history \
+  -H 'content-type: application/json' -H 'origin: http://localhost:5173' -d '{}'
+```
+
+These are loopback HTTP routes on the same server, **not MCP tools**, and they only answer to the
+sanctioned sim origin (plus the CORS preflight a JSON body forces). A voice assistant must never
+be able to enumerate a way to erase its user's memory, so the wipe has no place on the MCP
+surface — `tests/followups.test.ts` asserts the tool list stays at six names.
+
+This is emphasis, not a second app. Same MCP client, same server, same six tools, same protocol
 negotiation, and the "Simulated Alexa+ experience" label stays visible in both modes — the rules
 require the simulation to be shown clearly, and a presentation mode that hid it would be a
 different product, not a prettier one. The `d` shortcut deliberately does nothing while focus is in

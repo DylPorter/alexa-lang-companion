@@ -8,15 +8,11 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MemoryStore, Review } from "../memory/db.js";
+import { MemoryStore } from "../memory/db.js";
 import { LLM, ChatMessage } from "../llm/types.js";
 import { chatSystemPrompt } from "../persona/prompts.js";
 import { detectLanguageSwitch, languageName, normalizeLanguageCode } from "../persona/languages.js";
-import {
-  annotateRecurrence,
-  extractReview,
-  withMistakeIds,
-} from "../review/extract.js";
+import { finishSession } from "./session.js";
 import { ACCOUNT_ID, DEFAULT_NATIVE_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from "../config.js";
 
 export interface SalaDeps {
@@ -44,20 +40,28 @@ function recallContextLines(
 }
 
 /**
- * The review summary's ONE recurrence sentence (issue #2). Both inputs come from
- * stored rows: `count` is how many grammar items in this review carry a real
- * `recurrence` (extraction caps grammar at 2, so this can never overstate), and
- * `firstDate` is the earliest recorded date among them. Never called with 0 — an
- * empty history must add nothing to the summary.
+ * A pending cross-session follow-up as the client sees it (cross-session follow-ups). `quote` is the
+ * learner's OWN turn out of the `followups` table — this is the field that proves Sala
+ * is quoting a memory rather than generating one, which is why it travels to the client
+ * instead of staying inside the prompt.
  */
-function appendRecurrenceSentence(summary: string, count: number, firstDate: string): string {
-  const day = firstDate.slice(0, 10);
-  const clause =
-    count === 1
-      ? `1 of these is a mistake you've made before, first logged on ${day}.`
-      : `${count} of these are mistakes you've made before, first logged on ${day}.`;
-  return `${summary.trimEnd()} ${clause}`;
-}
+const followUpSchema = z.object({
+  topic: z.string(),
+  quote: z.string(),
+  /** When the learner said it (ISO, from the transcript row). */
+  saidAt: z.string(),
+  /** The language the quote arrived in — the reply itself is in the current one. */
+  language: z.string(),
+});
+
+/** One standing grammar habit, counted from `session_mistakes` rows. */
+const focusSchema = z.object({
+  mistakeId: z.string(),
+  label: z.string(),
+  /** DISTINCT past sessions — never the live one, whose rows do not exist yet. */
+  sessions: z.number().int().min(2),
+  lastDate: z.string(),
+});
 
 // ---- shared output schemas (typed contract for the A2 sim + client validation)
 const activitySchema = z.object({
@@ -117,7 +121,9 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
     {
       instructions:
         "Sala — a living-room language companion that remembers your life. " +
-        "Call chat for conversation, log_activity when the user shares something they did, " +
+        "Call chat for conversation — it opens a new session by asking how the thing the " +
+        "user was waiting for went, and works harder on the grammar habits that keep " +
+        "coming back. Call log_activity when the user shares something they did, " +
         "recall for transparency into stored memory, end_session to generate the session review, " +
         "list_sessions to see conversation history, set_language to change which language " +
         "Sala speaks for the rest of a session (or let `chat` notice it in the words).",
@@ -136,7 +142,11 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         "actually retrieved and offered to the model. The learner can change language by " +
         "asking for it in the message ('let's speak French') — the session then continues " +
         "in that language and the reply says so in `language`/`languageChanged`; pass " +
-        "`targetLanguage` to set it without the words being understood here.",
+        "`targetLanguage` to set it without the words being understood here. " +
+        "A message that OPENS a session also picks up anything the learner said they were " +
+        "waiting for in an earlier session (`followUps`) — Sala asks how it went, once — and " +
+        "every turn is told which grammar habits have recurred across past sessions, so it " +
+        "works on those harder without ever saying so.",
       inputSchema: {
         message: z.string().min(1).describe("The user's message (any language)"),
         sessionId: z
@@ -159,6 +169,13 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         languageChanged: z.boolean(),
         /** Same value as `language`, spelled out, so a client never needs its own table. */
         languageName: z.string(),
+        /**
+         * What Sala was handed to ask about on THIS turn (cross-session follow-ups): the verbatim
+         * learner quotes from earlier sessions that are still pending. Non-empty only
+         * on the message that opened a session, and only once per event — a row that
+         * was already offered never comes back here.
+         */
+        followUps: z.array(followUpSchema),
       },
     },
     async ({ message, sessionId, targetLanguage }) => {
@@ -198,13 +215,30 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       // Genuine recall only: FTS over stored activities + OTHER sessions' messages.
       const recalled = memory.recall({ query: message, limit: 4, excludeSessionId: sid });
       const contextLines = recallContextLines(recalled);
-      const memoryReferenced = contextLines.length > 0;
+
+      // Cross-session follow-up (cross-session follow-ups). The pending rows are read on the message
+      // that OPENS a session and then marked offered, so an event gets ONE welcome-back
+      // question rather than resurfacing for the rest of the learner's life. Marking
+      // says "Sala was handed this", which is exactly what the row can prove; whether
+      // the model then asked is in `reply`.
+      const offered = isNewSession ? memory.pendingFollowUps({ excludeSessionId: sid }) : [];
+      if (offered.length > 0) memory.markFollowUpsOffered(offered.map((f) => f.id), sid);
+      // Standing habits (the recurrence half) are read on EVERY turn: the system
+      // prompt is rebuilt each turn, so a once-per-session instruction would quietly
+      // stop working after the first reply.
+      const emphasis = memory.recurringMistakes({ language: nextLanguage, minSessions: 2 });
+
+      // Both are stored rows handed to the model, so both light the "remembered" badge —
+      // but they reach the client through their own fields, never folded into `recall`.
+      const memoryReferenced = contextLines.length > 0 || offered.length > 0;
 
       const system = chatSystemPrompt(
         {
           targetLanguage: nextLanguage,
           nativeLanguage: DEFAULT_NATIVE_LANGUAGE,
           justSwitchedFrom: switched ? previousLanguage : undefined,
+          followUps: offered.length > 0 ? offered : undefined,
+          emphasis: emphasis.length > 0 ? emphasis : undefined,
         },
         contextLines,
       );
@@ -236,6 +270,12 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
           language: nextLanguage,
           languageName: languageName(nextLanguage),
           languageChanged: switched,
+          followUps: offered.map((f) => ({
+            topic: f.topic,
+            quote: f.quote,
+            saidAt: f.saidAt,
+            language: f.language,
+          })),
         },
         content: [{ type: "text" as const, text: reply }],
       };
@@ -333,7 +373,12 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       title: "Recall stored memory",
       description:
         "FTS5 keyword search + recency over the user's logged activities and past " +
-        "sessions. Exposed for transparency — this is exactly what chat uses internally.",
+        "sessions. Exposed for transparency — this is exactly what chat uses internally. " +
+        "Also lists what Sala is waiting to ask about (`followUps`, verbatim quotes) and " +
+        "which grammar habits have recurred (`focus`, counted across sessions), because " +
+        "those two drive the conversation and should be inspectable too. The last two " +
+        "lists are small and complete: unlike `activities`/`pastSessions` they are NOT " +
+        "filtered by `query` — 'what is Sala waiting to ask' has no keyword form.",
       inputSchema: {
         query: z.string().optional().describe("Keywords; omit for most-recent material"),
         since: z.string().optional().describe("ISO date lower bound"),
@@ -342,16 +387,21 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       outputSchema: {
         activities: z.array(activitySchema),
         pastSessions: z.array(pastSessionSchema),
+        followUps: z.array(followUpSchema),
+        focus: z.array(focusSchema),
       },
     },
     async ({ query, since, limit }) => {
       const result = memory.recall({ query, since, limit });
+      const followUps = memory.pendingFollowUps({ limit: 10 });
+      const focus = memory.recurringMistakes({ minSessions: 2, limit: 10 });
+      const payload = { ...result, followUps, focus };
       return {
-        structuredContent: { ...result } as unknown as Record<string, unknown>,
+        structuredContent: payload as unknown as Record<string, unknown>,
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify(result, null, 2),
+            text: JSON.stringify(payload, null, 2),
           },
         ],
       };
@@ -370,64 +420,52 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         "A grammar point carries `mistakeId` (its stable identity) and, when the SAME " +
         "id is stored for an EARLIER session, `recurrence.seenInSessions` — a count of " +
         "distinct sessions including this one, read from real rows before they are " +
-        "written. A first-time mistake gets no `recurrence` field and no summary " +
-        "sentence: nothing is asserted that the database does not hold.",
+        "written. Recurred points are listed FIRST: the habit you have not fixed leads " +
+        "the panel. A first-time mistake gets no `recurrence` field and no summary " +
+        "sentence: nothing is asserted that the database does not hold. " +
+        "Closing a session is also what PRESERVES it — anything the learner said they " +
+        "were waiting for is stored verbatim and comes back as `followUps`, which the " +
+        "next new session is handed as its opening question.",
       inputSchema: {
         sessionId: z.string().describe("The Sala session id returned by chat"),
       },
       outputSchema: {
         review: reviewSchema,
         extractionPath: z.enum(["heuristic", "llm"]),
+        followUps: z.array(followUpSchema),
       },
     },
     async ({ sessionId }) => {
-      const session = memory.getSession(sessionId);
-      if (!session) {
+      const finished = await finishSession(memory, llm, sessionId);
+      if (!finished) {
         return {
           isError: true,
           content: [{ type: "text" as const, text: `Unknown session: ${sessionId}` }],
         };
       }
-      const rows = memory.getTranscript(sessionId);
-      const transcript = rows.map((m) => ({ role: m.role, content: m.content }));
-      // Which languages were actually spoken, in order of appearance. Empty tags (rows
-      // written before switching existed) do not count as a language of their own.
-      const spoken = [...new Set(rows.map((r) => r.language).filter((l) => l !== ""))];
-      const { review, path } = await extractReview(
-        transcript,
-        {
-          targetLanguage: session.language,
-          nativeLanguage: DEFAULT_NATIVE_LANGUAGE,
-          sessionLanguages: spoken.length > 1 ? spoken : undefined,
-        },
-        llm,
-      );
-
-      // ---- cross-session recurrence (issue #2) ---------------------------------
-      // ORDER IS THE INTEGRITY GUARANTEE: `mistakeHistory` is read BEFORE
-      // `endSession` writes this session's `session_mistakes` rows. Read after, the
-      // count would include today and turn a first-time mistake into a fabricated
-      // "you keep making this" — same rule as `memoryReferenced`.
-      const withIds = withMistakeIds(review, session.language);
-      const { review: annotated, recurred } = annotateRecurrence(withIds, (mistakeId) =>
-        memory.mistakeHistory(mistakeId, sessionId),
-      );
-      // One sentence, only when rows back it: `recurred` counts the items that got a
-      // real `recurrence`, and `firstSeen` is the earliest recorded date among them.
-      // Both are read off the annotated review, so no number here is inferred, and
-      // `recurred === 0` leaves the summary exactly as extraction wrote it.
-      const firstSeen = annotated.grammar
-        .map((g) => g.recurrence?.firstDate)
-        .filter((d): d is string => typeof d === "string")
-        .sort()[0];
-      const ended: Review =
-        recurred > 0 && firstSeen
-          ? { ...annotated, summary: appendRecurrenceSentence(annotated.summary, recurred, firstSeen) }
-          : annotated;
-      memory.endSession(sessionId, ended.summary, ended);
+      const { review: ended, path, followUps } = finished;
+      const blocks = [
+        { type: "text" as const, text: JSON.stringify(ended, null, 2) },
+        // Spoken-proof line: the follow-ups are the part of the money shot the viewer
+        // cannot see in the review itself, so it goes in the human-readable payload too.
+        ...(followUps.length > 0
+          ? [
+              {
+                type: "text" as const,
+                text: `Stored for next session: ${followUps
+                  .map((f) => `${f.topic} — "${f.quote}"`)
+                  .join("; ")}`,
+              },
+            ]
+          : []),
+      ];
       return {
-        structuredContent: { review: ended, extractionPath: path },
-        content: [{ type: "text" as const, text: JSON.stringify(ended, null, 2) }],
+        structuredContent: {
+          review: ended,
+          extractionPath: path,
+          followUps,
+        },
+        content: blocks,
       };
     },
   );

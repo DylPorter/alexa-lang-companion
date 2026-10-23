@@ -14,6 +14,17 @@
  */
 export const RECALL_MARKER = "<<RECALLLED>>";
 
+/**
+ * Prompt-protocol marker for the cross-session follow-up (cross-session follow-ups). The server
+ * appends a `<<PENDING_FOLLOW_UPS>>` block ONLY when `followups` holds rows for
+ * this learner, and each line inside it is a verbatim stored quote. Unlike
+ * `RECALL_MARKER` this one does not gate `memoryReferenced` on its own — it also
+ * sets it (a follow-up is a retrieved stored fact) — but the field that carries it
+ * to the client is `chat.followUps`, so "what Sala was handed to ask about" is
+ * readable without parsing a prompt. Echo keys off it for the offline demo.
+ */
+export const FOLLOW_UP_MARKER = "<<PENDING_FOLLOW_UPS>>";
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

@@ -15,6 +15,8 @@ function reply(partial: Partial<ChatResult> = {}): ChatResult {
     language: "en",
     languageName: "English",
     languageChanged: false,
+    // Required because the server always sends it; [] = nothing was handed to ask about.
+    followUps: [],
     ...partial,
   };
 }

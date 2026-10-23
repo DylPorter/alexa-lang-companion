@@ -90,10 +90,10 @@ notes; the hackathon's sanctioned path remains our own web-app simulation.
 
 | tool | in | out | notes |
 |---|---|---|---|
-| `chat` | `{message, sessionId?, targetLanguage?}` | `{reply, correctionsUsed?, memoryReferenced?}` | core loop: reply in target language, friend persona, gentle inline correction, weaves recalled personal context when relevant; `memoryReferenced` lets the sim UI show a subtle "remembered" indicator — never pretend to recall what isn't stored |
+| `chat` | `{message, sessionId?, targetLanguage?}` | `{reply, correctionsUsed?, memoryReferenced?, followUps[]}` | core loop: reply in target language, friend persona, gentle inline correction, weaves recalled personal context when relevant; `memoryReferenced` lets the sim UI show a subtle "remembered" indicator — never pretend to recall what isn't stored. On the turn that OPENS a session it also carries `followUps[]`: the pending questions it was handed and is now spending (each `{topic, quote, saidAt, language}`) |
 | `log_activity` | `{text, when?}` | `{id}` | user told the companion something they did/are doing; timestamped |
-| `recall` | `{query?, since?, limit?}` | `{activities[], pastSessions[]}` | FTS5 + recency; used by `chat` internally and exposed for transparency |
-| `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}}` | **the money shot**: review items extracted from what was ACTUALLY said this session — words the user used or struggled with (with the user's own sentence as the example), 1-2 grammar points tied to observed mistakes; stored as a session summary |
+| `recall` | `{query?, since?, limit?}` | `{activities[], pastSessions[], followUps[], focus[]}` | FTS5 + recency; used by `chat` internally and exposed for transparency. `followUps` = the questions still unasked (`topic`, the learner's verbatim quote, when they said it); `focus` = the habits being weighted, with `sessions` counted from stored rows. Both are not filtered by `query` — they are the standing state, and this is the surface a reviewer can use to check the claims |
+| `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}, followUps[]}` | **the money shot**: review items extracted from what was ACTUALLY said this session — words the user used or struggled with (with the user's own sentence as the example), 1-2 grammar points tied to observed mistakes; stored as a session summary. Also the capture point for cross-session memory: it runs the anticipated-event detector over the learner's own turns and returns what it newly stored, so "Sala will ask you about the interview" is printed from the row it wrote, not from a model's impression |
 | `list_sessions` | `{}` | `[{id, date, language, languages[], summary}]` | the "remembers every conversation" proof; sim shows past sessions + their review lists; `languages[]` is every language the session covered, in order |
 | `set_language` *(added 2026-10-23)* | `{sessionId, language}` | `{sessionId, previousLanguage, language, languageName, changed}` | changes which language Sala speaks for the rest of a LIVE session without ending it. A capable client (real Alexa+ does the NLU) calls this; `chat` also recognises the request in the learner's own words, so a text-only client still gets it |
 
@@ -209,10 +209,51 @@ live JSON-RPC (proves the server is real MCP, judges love seeing the seam), and 
 ## Honesty rules (carry over from the fact-checker — non-negotiable)
 
 - Review lists derive from the actual conversation transcript, never templates masquerading as extraction.
-- `memoryReferenced` only when a stored fact was genuinely retrieved.
+- `memoryReferenced` only when a stored fact was genuinely retrieved — and "genuinely retrieved"
+  now includes a follow-up row: an opener that asks about a stored event lights the badge, because
+  the event came out of the database.
+- A follow-up is a stored row or nothing. Only `role=user` turns are scanned (so Sala can never end
+  up asking about an event it invented itself), the stored `quote` is the learner's turn verbatim,
+  a topic is offered **once ever** (partial unique index on `(account_id, topic) WHERE offered_at IS
+  NULL`), and the cue tables exist only for languages whose phrases were checked — an unverified
+  language produces no seeds rather than guesses. Any past marker vetoes the whole turn: a false
+  veto costs one missed question, a false ask makes Sala claim knowledge of an event that was
+  already over. Same asymmetry as `validateLLMReview`, resolved the same way.
+- Recurrence counts come from `COUNT(DISTINCT session_id)` over `session_mistakes`, never from a
+  model, and the live session cannot count itself (its rows do not exist until `end_session`). The
+  2-session gate is a `minSessions` argument, so it is testable rather than vibes. An identity's
+  label is the newest stored `point`, falling back to the identity made readable — never an
+  invented rule name.
+- Emphasis is behaviour, not a claim. The `WORKING ON` block tells the persona to recast the habit
+  every time and steer one turn into practice, and tells it twice that the lines are what to
+  practise, not what to say: never name a rule, never mention a session count. In the review panel
+  the same habit earns the first slot (`prioritiseRecurring`) and one honest sentence in the
+  summary with the date it was first logged.
+- Wiping memory deletes rows AND rebuilds the FTS indexes, so `recall` cannot answer from content
+  that is gone; it is scoped to one `account_id`, and returns per-table counts so the caller can say
+  what went rather than "ok".
+- Voice turns are committed by the learner, not by a detector. Capture is `continuous: true`; an ASR
+  final segment only streams text, and only `stop()` (the mic button) submits a turn. When the
+  browser drops the session on its own the transcript is kept and capture relaunches, bounded, and
+  past the bound it says so instead of pretending to listen.
 - The sim is labeled a simulation everywhere (rules + honesty).
 - No secrets in the repo; `.env` gitignored; LLM via env-configurable backend.
 - Friction log entries for every tool/API/SDK friction (10% judging bonus material).
+
+## Demo-setup HTTP routes (added 2026-10-23)
+
+`POST /demo/load-history` and `POST /demo/clear-history` on the Sala server back the sim's two
+filming buttons. Deliberately **not** MCP tools: a wipe is exactly the kind of destructive action a
+voice assistant must never be able to enumerate, and six tools is the surface the submission claims.
+Guards: POST only (405), an Origin header must be the sanctioned sim origin (403 — no Origin means a
+local process, which already has the file, so the posture is unchanged), and `application/json` is
+required so a cross-site form POST cannot reach them without a CORS preflight (415).
+
+Seeding is not a fixture dump. Each scripted session is written as real message rows and closed
+through `finishSession()` — the same function `end_session` calls — so the reviews, mistake
+identities, recurrence counts and the pending follow-up are produced by the shipping code path,
+then back-dated (`daysAgo`/`hourShift`) so the panel reads as a week of history. With no API key it
+runs the heuristic extraction path, which means the same four sessions on every take and no spend.
 
 ## Non-goals (v1)
 

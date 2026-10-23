@@ -20,6 +20,12 @@
  *  - POST bodies must be content-type application/json (415 otherwise), so
  *    cross-origin "simple" form/text POSTs cannot smuggle MCP payloads.
  *  - Body size is capped (413 + destroy) — no unbounded buffering DoS.
+ *  - `POST /demo/clear-history` and `POST /demo/load-history` erase and rewrite the
+ *    stored history. They are not MCP tools (nothing that wipes a user's memory
+ *    belongs in a tool list Alexa can see), they refuse a browser Origin that is not
+ *    on the sanctioned allowlist, and they require application/json — so a stray page
+ *    cannot fire them. They exist because the demo DB is a local file for one person
+ *    and filming needs a known starting state.
  *  - Production identity/auth path (OAuth 2.1 account linking, bearer tokens
  *    via AuthProvider → req.auth) is documented in src/config.ts; the local
  *    demo is a single-user stub.
@@ -27,9 +33,19 @@
 import http from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildSalaServer, SalaDeps } from "./tools.js";
+import { loadSampleHistory, wipeHistory } from "./demo.js";
 
 export const MCP_PATH = "/mcp";
 export const HEALTH_PATH = "/health";
+/**
+ * Demo-history routes (the sim's "Clear history" / "Load prior history" buttons).
+ * These are NOT MCP tools: a tool that erases a user's memory would be advertised to
+ * Alexa and to every client that lists tools, which is not a thing that should exist.
+ * They are local demo setup, so they live on the same loopback server as `/health`
+ * and are gated the same way browser access to `/mcp` is.
+ */
+export const DEMO_CLEAR_PATH = "/demo/clear-history";
+export const DEMO_SEED_PATH = "/demo/load-history";
 export const MAX_BODY_BYTES = 2 * 1024 * 1024; // generous for MCP JSON-RPC
 
 export interface SalaHttpOptions {
@@ -116,6 +132,49 @@ export function createSalaHttpServer(deps: SalaDeps, opts: SalaHttpOptions = {})
     if (req.method === "GET" && url.pathname === HEALTH_PATH) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, backend: deps.llm.name }));
+      return;
+    }
+
+    // ---- demo-history routes (the sim's two setup buttons) --------------------
+    if (url.pathname === DEMO_CLEAR_PATH || url.pathname === DEMO_SEED_PATH) {
+      const json = (code: number, body: unknown) => {
+        res.writeHead(code, { "content-type": "application/json" });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== "POST") {
+        json(405, { error: "Method not allowed — demo history routes take POST" });
+        return;
+      }
+      // A browser caller must be the sanctioned sim origin — the same allowlist that
+      // gates CORS on /mcp, and a JSON content-type forces it to preflight. A caller
+      // with no Origin header is a local process, which already has the file: the
+      // posture is unchanged, it just cannot be driven from some other page.
+      if (typeof origin === "string" && !(allowedOrigins?.has(origin) ?? false)) {
+        json(403, { error: "Forbidden: origin not allowed for demo history routes" });
+        return;
+      }
+      const contentType = (req.headers["content-type"] ?? "").split(";")[0].trim();
+      if (contentType !== "application/json") {
+        res.writeHead(415, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "Unsupported Media Type: expected application/json" }));
+        req.destroy();
+        return;
+      }
+      try {
+        await readJsonBody(req, res); // no inputs; the body is read only to drain the socket
+        if (res.writableEnded) return;
+        if (url.pathname === DEMO_CLEAR_PATH) {
+          json(200, { ok: true, cleared: wipeHistory(deps.memory) });
+        } else {
+          // Seeding runs the real review pipeline, so it is awaited, not fire-and-forget.
+          json(200, { ok: true, ...(await loadSampleHistory(deps.memory)) });
+        }
+      } catch (err) {
+        console.error("[demo] history route failed:", err);
+        if (!res.headersSent) {
+          json(500, { error: "Demo history operation failed" });
+        }
+      }
       return;
     }
 

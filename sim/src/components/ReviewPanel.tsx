@@ -1,4 +1,4 @@
-import type { EndSessionResult, Review } from "../mcp/types";
+import type { EndSessionResult, FollowUp, Review } from "../mcp/types";
 
 /**
  * The money shot: session review rendered EXCLUSIVELY from end_session's
@@ -8,9 +8,16 @@ import type { EndSessionResult, Review } from "../mcp/types";
 export function ReviewView({
   review,
   extractionPath,
+  followUps,
 }: {
   review: Review;
   extractionPath?: "heuristic" | "llm";
+  /**
+   * Only what the SERVER stored on this call (cross-session follow-ups). Absent or empty renders no
+   * line at all: "nothing was remembered for next time" is not a claim to make, and
+   * a client-side guess about the learner's future certainly isn't.
+   */
+  followUps?: FollowUp[];
 }) {
   // Recurrence is server-counted from stored rows. Render ONLY what came back:
   // an item without `recurrence` gets no chip and no claim, because "never seen
@@ -23,6 +30,17 @@ export function ReviewView({
           {recurring.length === 1
             ? "1 grammar point here also came up in earlier sessions."
             : `${recurring.length} grammar points here also came up in earlier sessions.`}
+        </p>
+      )}
+      {followUps && followUps.length > 0 && (
+        <p
+          className="followup-note"
+          data-testid="followup-note"
+          // The hover is the proof: the learner's own sentence, stored verbatim.
+          title={followUps.map((f) => `“${f.quote}”`).join("\n")}
+        >
+          Saved for next time — Sala will ask how the{" "}
+          {followUps.map((f) => f.topic).join(" and the ")} went.
         </p>
       )}
       <section className="review-section">
@@ -106,7 +124,11 @@ export function ReviewPanel({ result }: { result: EndSessionResult | null }) {
   }
   return (
     <div data-testid="review-panel">
-      <ReviewView review={result.review} extractionPath={result.extractionPath} />
+      <ReviewView
+        review={result.review}
+        extractionPath={result.extractionPath}
+        followUps={result.followUps}
+      />
     </div>
   );
 }
