@@ -8,10 +8,14 @@
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { MemoryStore } from "../memory/db.js";
+import { MemoryStore, Review } from "../memory/db.js";
 import { LLM, ChatMessage } from "../llm/types.js";
 import { chatSystemPrompt } from "../persona/prompts.js";
-import { extractReview } from "../review/extract.js";
+import {
+  annotateRecurrence,
+  extractReview,
+  withMistakeIds,
+} from "../review/extract.js";
 import { ACCOUNT_ID, DEFAULT_NATIVE_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from "../config.js";
 
 export interface SalaDeps {
@@ -38,6 +42,22 @@ function recallContextLines(
   return lines;
 }
 
+/**
+ * The review summary's ONE recurrence sentence (issue #2). Both inputs come from
+ * stored rows: `count` is how many grammar items in this review carry a real
+ * `recurrence` (extraction caps grammar at 2, so this can never overstate), and
+ * `firstDate` is the earliest recorded date among them. Never called with 0 — an
+ * empty history must add nothing to the summary.
+ */
+function appendRecurrenceSentence(summary: string, count: number, firstDate: string): string {
+  const day = firstDate.slice(0, 10);
+  const clause =
+    count === 1
+      ? `1 of these is a mistake you've made before, first logged on ${day}.`
+      : `${count} of these are mistakes you've made before, first logged on ${day}.`;
+  return `${summary.trimEnd()} ${clause}`;
+}
+
 // ---- shared output schemas (typed contract for the A2 sim + client validation)
 const activitySchema = z.object({
   id: z.number(),
@@ -57,22 +77,31 @@ const vocabItemSchema = z.object({
   example: z.string(),
   note: z.string().optional(),
 });
+/**
+ * Cross-session recurrence of one grammar point (issue #2). OPTIONAL on purpose:
+ * reviews stored before `session_mistakes` existed must still validate, and an
+ * item with no earlier rows gets NO field at all rather than `seenInSessions: 1`.
+ * Declared here because the MCP SDK validates `structuredContent` against
+ * `outputSchema` — an undeclared field would be a protocol error, not a free add.
+ */
+const recurrenceSchema = z.object({
+  /**
+   * DISTINCT sessions carrying this `mistakeId`, INCLUDING the one being ended —
+   * so ≥ 2 whenever present. Counted from real `session_mistakes` rows by
+   * `MemoryStore.mistakeHistory`, never inferred.
+   */
+  seenInSessions: z.number().int().min(1),
+  /** When this identity was first recorded (ISO, from the earliest stored row). */
+  firstDate: z.string(),
+});
 const grammarItemSchema = z.object({
   point: z.string(),
   example: z.string(),
   correction: z.string(),
   explanation: z.string(),
-  // Issue #2. Both are OPTIONAL and only ever present when a real row backs them:
-  // the MCP SDK validates `structuredContent` against `outputSchema` and rejects
-  // undeclared keys outright ("must NOT have additional properties"), so a field
-  // that leaves the server must be declared here or the whole tool call errors.
+  /** Stable mistake identity — the exact key recurrence counts on (`canonicalMistakeId`). */
   mistakeId: z.string().optional(),
-  recurrence: z
-    .object({
-      seenInSessions: z.number().int().min(1),
-      firstDate: z.string(),
-    })
-    .optional(),
+  recurrence: recurrenceSchema.optional(),
 });
 const reviewSchema = z.object({
   vocabulary: z.array(vocabItemSchema),
@@ -239,7 +268,12 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       description:
         "The money shot: closes the session and returns a review — vocabulary and " +
         "1-2 grammar points derived EXCLUSIVELY from what the learner actually said " +
-        "(their own sentences as examples), plus a summary. Stored with the session.",
+        "(their own sentences as examples), plus a summary. Stored with the session. " +
+        "A grammar point carries `mistakeId` (its stable identity) and, when the SAME " +
+        "id is stored for an EARLIER session, `recurrence.seenInSessions` — a count of " +
+        "distinct sessions including this one, read from real rows before they are " +
+        "written. A first-time mistake gets no `recurrence` field and no summary " +
+        "sentence: nothing is asserted that the database does not hold.",
       inputSchema: {
         sessionId: z.string().describe("The Sala session id returned by chat"),
       },
@@ -264,10 +298,32 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         { targetLanguage: session.language, nativeLanguage: DEFAULT_NATIVE_LANGUAGE },
         llm,
       );
-      memory.endSession(sessionId, review.summary, review);
+
+      // ---- cross-session recurrence (issue #2) ---------------------------------
+      // ORDER IS THE INTEGRITY GUARANTEE: `mistakeHistory` is read BEFORE
+      // `endSession` writes this session's `session_mistakes` rows. Read after, the
+      // count would include today and turn a first-time mistake into a fabricated
+      // "you keep making this" — same rule as `memoryReferenced`.
+      const withIds = withMistakeIds(review, session.language);
+      const { review: annotated, recurred } = annotateRecurrence(withIds, (mistakeId) =>
+        memory.mistakeHistory(mistakeId, sessionId),
+      );
+      // One sentence, only when rows back it: `recurred` counts the items that got a
+      // real `recurrence`, and `firstSeen` is the earliest recorded date among them.
+      // Both are read off the annotated review, so no number here is inferred, and
+      // `recurred === 0` leaves the summary exactly as extraction wrote it.
+      const firstSeen = annotated.grammar
+        .map((g) => g.recurrence?.firstDate)
+        .filter((d): d is string => typeof d === "string")
+        .sort()[0];
+      const ended: Review =
+        recurred > 0 && firstSeen
+          ? { ...annotated, summary: appendRecurrenceSentence(annotated.summary, recurred, firstSeen) }
+          : annotated;
+      memory.endSession(sessionId, ended.summary, ended);
       return {
-        structuredContent: { review, extractionPath: path },
-        content: [{ type: "text" as const, text: JSON.stringify(review, null, 2) }],
+        structuredContent: { review: ended, extractionPath: path },
+        content: [{ type: "text" as const, text: JSON.stringify(ended, null, 2) }],
       };
     },
   );

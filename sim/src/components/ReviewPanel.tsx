@@ -12,8 +12,19 @@ export function ReviewView({
   review: Review;
   extractionPath?: "heuristic" | "llm";
 }) {
+  // Recurrence is server-counted from stored rows. Render ONLY what came back:
+  // an item without `recurrence` gets no chip and no claim, because "never seen
+  // before" is not something the server proved.
+  const recurring = review.grammar.filter((g) => g.recurrence);
   return (
     <div className="review" data-testid="review-view">
+      {recurring.length > 0 && (
+        <p className="recurrence-note" data-testid="recurrence-note">
+          {recurring.length === 1
+            ? "1 grammar point here also came up in earlier sessions."
+            : `${recurring.length} grammar points here also came up in earlier sessions.`}
+        </p>
+      )}
       <section className="review-section">
         <h3>Vocabulary from this conversation</h3>
         {review.vocabulary.length === 0 ? (
@@ -39,7 +50,18 @@ export function ReviewView({
           <ul className="grammar-list">
             {review.grammar.map((g, i) => (
               <li className="grammar-card" key={`${g.point}-${i}`} data-testid="grammar-card">
-                <div className="grammar-point">{g.point}</div>
+                <div className="grammar-point">
+                  {g.point}
+                  {g.recurrence && (
+                    <span
+                      className="recurrence-chip"
+                      data-testid="recurrence-chip"
+                      title={`first seen ${g.recurrence.firstDate.slice(0, 10)}`}
+                    >
+                      recurring · seen {g.recurrence.seenInSessions}×
+                    </span>
+                  )}
+                </div>
                 <div className="grammar-pair">
                   <div className="grammar-said">
                     <span className="tag tag-said">you said</span> “{g.example}”

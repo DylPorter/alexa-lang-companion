@@ -371,6 +371,32 @@ button:disabled { opacity: 0.45; cursor: default; }
 .tag-corrected { background: rgba(143, 191, 127, 0.16); color: var(--green); }
 .grammar-explanation { margin-top: 8px; font-size: 12.5px; color: var(--text-dim); }
 
+/* Cross-session recurrence (issue #2). Same pill grammar as .tag /
+   .remembered-badge and the amber accent token — no new colour. Only ever
+   rendered when the server sent a real count. */
+.recurrence-chip {
+  display: inline-block;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  padding: 1px 8px;
+  border-radius: 999px;
+  margin-left: 8px;
+  vertical-align: 1px;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+.recurrence-note {
+  display: inline-block;
+  margin: 0 0 12px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
 .review-summary { color: var(--text); font-size: 13.5px; }
 .extraction-note { font-size: 11px; color: var(--text-faint); letter-spacing: 0.03em; }
 

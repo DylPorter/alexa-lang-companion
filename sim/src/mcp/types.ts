@@ -43,6 +43,18 @@ export interface VocabItem {
   note?: string;
 }
 
+/**
+ * Cross-session recurrence, as counted server-side from stored rows. Absent =
+ * this mistake identity has no earlier session — the panel must show nothing,
+ * not a "first time" claim (honesty rule, mirrors `memoryReferenced`).
+ */
+export interface GrammarRecurrence {
+  /** DISTINCT sessions carrying this mistake identity, INCLUDING the current one. */
+  seenInSessions: number;
+  /** Earliest stored session date for it (ISO). */
+  firstDate: string;
+}
+
 export interface GrammarItem {
   point: string;
   /** The learner's own (mistaken) sentence, verbatim. */
@@ -50,6 +62,9 @@ export interface GrammarItem {
   /** Corrected form. */
   correction: string;
   explanation: string;
+  /** Server-derived stable mistake identity; the exact key recurrence counts on. */
+  mistakeId?: string;
+  recurrence?: GrammarRecurrence;
 }
 
 export interface Review {
