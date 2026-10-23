@@ -158,3 +158,52 @@ Same commands, no camera: `PORT=3100 SIM_PORT=5199 npm run demo:voice`, open
 the latency feel (proxy turns, the End session wait) and the mic rehearsal in one pass. Then he
 cold-runs on his own machine per the README teammate guide: echo mode first with zero secrets,
 then proxy mode with creds handed over privately, never in chat.
+
+## Alan's 2026-10-23 rewrite — five lines that must not go out as written
+
+The structure is better than ours (problem hook → solution → demo → next-day check-in → architecture →
+outro, and it fits 2:15). Keep it. These claims are not true of the build, and the video plus the form
+go public, so swap the wording. Verified against the source on 10-23, not from memory.
+
+1. **"It runs entirely on the Alexa hardware you already own with no extra subscriptions or apps
+   required."** We have never run on an Alexa+ device, and the rules require the video to clearly show
+   a *simulated* experience. Say: **"It's an Alexa+ add-on: a self-hosted MCP server you host yourself,
+   so no extra subscription and no app to open — the speaker you already own is the interface."**
+
+2. **"Long-Term Memory / Vector DB"** in the architecture visual, and any mention of embeddings. There
+   is no vector database. `src/memory/db.ts` is SQLite + FTS5 keyword search with bm25 and recency,
+   deliberately, and the SPEC calls it honest simplicity. Say: **"keyword recall with recency ranking
+   over one SQLite file the user owns."** The portable-single-file-DB story is *stronger* than a
+   borrowed vector-DB buzzword, and it is checkable in the repo.
+
+3. **"decouples real-time voice streaming from long-term memory"** and **"an asynchronous background
+   task extracts..."**. Audio never reaches a third-party add-on at all — the device streams to Amazon's
+   cloud, and Alexa+ does the ASR, the response generation and the UI (verified from the MCP Toolkit
+   overview and quoted in SPEC.md). And the extraction is not asynchronous: it runs inline inside
+   `end_session`, which is why it measures 22-47 s on camera. Say: **"Alexa+ handles the listening and
+   the speaking. Our add-on gets text back, and when a session closes the whole transcript is re-read
+   to build the review — one pass, before the panel appears."** If you want the pause to look deliberate
+   instead of like a stall, use the Beat 6 cut-around already in this runbook.
+
+4. **"tracking of recurring grammar mistakes" / "Alexa mentions the problem that persists"** (Beat 3
+   and the hook). Nothing compares a mistake against previous sessions. `end_session` reviews the
+   current transcript; past reviews are stored and listed by `list_sessions`, but no code notices a
+   repeat. Either cut that beat, or show what is really there: **the review quoting the learner's own
+   sentence, then `list_sessions` with yesterday's panel still on file.** Do not perform a persistence
+   feature we did not build — a judge cloning the repo will grep for it. Filed as an issue.
+
+5. **"keeping response times ultra-fast and staying well within token constraints."** Chat turns are
+   fast, the review is not. Claim the retrieval discipline instead: **"only the relevant recalled
+   context goes into the prompt, so the conversation stays cheap and quick. The review is the one slow
+   call, and it is worth waiting for."**
+
+Bonus filming note: the demo lines in 0:40-1:15 say the target language is German but the learner's
+spoken lines are English. Pick one. If Alan wants his own ESL story the learner speaks English errors
+and Sala recasts in English; if German, his lines must be German (the recast quality is verified —
+"Gestern bist du mit deinem Freund in den Park gegangen und habt Fußball gespielt?"). The on-screen
+language and the `targetLanguage` chip must agree, and the "Simulated Alexa+ experience" label stays in
+frame the whole time.
+
+Also careful in the hook: "Without long-term memory, every chat resets to zero — there's no tracking of
+recurring grammar mistakes" asserts what Alexa+ does not do. We have not measured Alexa+ itself. Frame
+it as what the add-on adds, not as a defect claim about Amazon's product.
