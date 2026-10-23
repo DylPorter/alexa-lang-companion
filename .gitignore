@@ -10,3 +10,4 @@ dist-sim/
 .playwright-mcp/
 *.db-shm
 *.db-wal
+.claude/
