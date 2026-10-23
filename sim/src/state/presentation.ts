@@ -44,6 +44,22 @@ export function deviceOrbVisible(ev: { hasTurns: boolean; hasReview: boolean }):
 }
 
 /**
+ * Which status line sits under the presence orb.
+ *
+ * `idle` is FIRST-RUN copy ("say hi to start"). Once the session has any turns, the
+ * same quiet means something different — the device is waiting for its next turn, not
+ * waiting to be introduced — so the caption has to change with it. Left as `idle` it
+ * reverted to "say hi to start" between every exchange, which on camera reads as a
+ * device that forgets the conversation it is in.
+ */
+export function deviceStateKey(
+  orb: "idle" | "listening" | "thinking" | "speaking",
+  hasTurns: boolean,
+): "idle" | "listening" | "thinking" | "speaking" | "waiting" {
+  return orb === "idle" && hasTurns ? "waiting" : orb;
+}
+
+/**
  * The `d` shortcut must not fire while the presenter is typing. Keypad 'd' and
  * any modified keystroke are ignored too, so browser/IME combos stay intact.
  */

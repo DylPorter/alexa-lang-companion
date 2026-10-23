@@ -175,13 +175,18 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       // one turn — which is exactly what a speaker-driven demo must not do.
       const previousLanguage = session?.language ?? targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
 
-      // An explicit parameter wins over the words in the message: a client that has
-      // already decided (real Alexa+ does the understanding) should not be overridden
-      // by a stray "how do you say that in Spanish?" inside the turn.
+      // The WORDS win over an explicit `targetLanguage`. That parameter is the default a
+      // device carried into the turn — the sim sends its picker value on the message that
+      // opens a session — not an instruction live in that moment. Detection is not a
+      // stray mention (it needs a request shape, see `detectLanguageSwitch`), so letting
+      // it win costs nothing: a learner whose FIRST words are "let's speak Spanish" means
+      // Spanish. Reversing these two lines was issue #4: the model answered in Spanish
+      // while `language` stayed "en", so the pill, the picker, the DB tag and the TTS
+      // voice all contradicted the reply on screen.
       const explicit = targetLanguage?.trim();
-      const nextLanguage = explicit
-        ? normalizeLanguageCode(explicit) ?? explicit
-        : detectLanguageSwitch(message)?.code ?? previousLanguage;
+      const nextLanguage =
+        detectLanguageSwitch(message)?.code ??
+        (explicit ? (normalizeLanguageCode(explicit) ?? explicit) : previousLanguage);
       const switched = nextLanguage !== previousLanguage;
       if (switched) memory.setSessionLanguage(sid, nextLanguage);
 

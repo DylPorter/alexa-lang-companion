@@ -137,6 +137,17 @@ VO (running across 7a-7c):
 > private, yours to copy or delete. There is no third-party Alexa+ memory API for add-ons, so your
 > memory living in a file instead of someone else's graph is the architecture, not a workaround."
 
+**Camera notes for 7b, measured in the browser 2026-10-23 (all fixed, no manual fiddling needed).**
+The `⇄ now speaking French` pill sits at the TOP of Sala's bubble, and the pane used to pin itself to
+the bottom — so the shot that matters left the frame after two exchanges. The pane now scrolls the
+newest pill into view by itself: do not scroll during the take, and do not "help" it, a second scroll
+will move it back out. French is the spoken language for this beat on purpose: Piper has local voices
+for en/fr/de only, so a spoken switch to Spanish switches the reply, the pill, the picker and the
+transcript tags but produces **no audio** (the server answers HTTP 400, verified). Keep Spanish for
+the typed/architecture mention, not for the spoken money shot. Same pass fixed the presence orb's top
+edge being clipped off-frame, and the status line under it, which said "say hi to start" between every
+turn of a live conversation; it now reads "ready when you are" once the session has exchanges.
+
 **Verified 2026-10-23: the Past sessions tab does not exist in `?device=1`.** Device mode mounts no tabs
 at all (no `.tab`, no `[role=tab]` — the admin column isn't rendered), so 7c is shot either by
 toggling out with `d` or from the plain `http://localhost:5199` page, then back into device view. Do not
@@ -147,7 +158,9 @@ way you composite the translucent plate) — see `docs/a2-qa.md`.
 Rehearsal note for 7b: "switch to French" is in the tested table; "maybe we could do French
 sometime?" is not — and it *should not* switch, that is the false-positive guard. Don't paraphrase
 the line into something softer on camera, and don't ask it in French: the request is recognised in
-five languages, but the shortest phrasing is the safest transcript.
+five languages, but the shortest phrasing is the safest transcript. The ask now also works as a
+session's very first words (issue #4, fixed and proven in `run-qa`), but keep the order written above:
+7a's badge is the memory proof, and a switch in the opening line would spend it.
 
 ### Beat 8 — Close (2:45-3:00) [PROXY]
 

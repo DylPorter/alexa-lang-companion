@@ -111,7 +111,9 @@ injected into the model prompt. `vocabulary[].example` and `grammar[].example` a
 learner's own sentences, displayed verbatim. Pass `sessionId` back on every follow-up turn.
 `chat` without one starts a new Sala session. `targetLanguage` is only for OPENING a session —
 after that the server owns the language, because a device that re-asserted its picker every turn
-would overrule a learner who had just asked out loud for something else. `language` and
+would overrule a learner who had just asked out loud for something else. Even on the opening
+message it is a default, not an instruction: if the words ask for a different language, the words
+win. `language` and
 `languageChanged` in the reply say what Sala is actually speaking now. `languages[]` on a past
 session lists every language it covered, in order (`["en","fr"]` for one that switched halfway).
 

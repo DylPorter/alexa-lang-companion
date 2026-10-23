@@ -67,9 +67,18 @@ export async function speak(
   }
 
   // Piper fallback — local neural TTS behind the same interface.
+  // `reason` is set as the attempt fails, not decided afterwards: "there is no TTS
+  // server" and "the server is up but has no voice for Spanish" are different truths, and
+  // the second one is what a learner needs to see on screen (Spanish is a supported
+  // CONVERSATION language; only the local voice pack is missing).
+  let reason = "No speech voices in this browser and no local Piper TTS server — the reply is on screen only.";
   try {
     const res = await fetch(`${piperUrl}?lang=${encodeURIComponent(lang)}&text=${encodeURIComponent(text)}`);
-    if (!res.ok) throw new Error(`piper HTTP ${res.status}`);
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      reason = `The local Piper voice cannot speak "${lang}" (${body || `HTTP ${res.status}`}) — the reply is on screen only.`;
+      throw new Error(`piper HTTP ${res.status}`);
+    }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
@@ -89,9 +98,7 @@ export async function speak(
     await audio.play();
     return backend;
   } catch {
-    hooks.onUnavailable(
-      "No speech voices in this browser and no local Piper TTS server — the reply is on screen only.",
-    );
+    hooks.onUnavailable(reason);
     return null;
   }
 }

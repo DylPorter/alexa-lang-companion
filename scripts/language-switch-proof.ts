@@ -19,6 +19,7 @@ interface ChatTurn {
   language: string;
   languageName: string;
   languageChanged: boolean;
+  isNewSession: boolean;
 }
 
 const client = new Client({ name: "language-switch-proof", version: "0.1.0" });
@@ -59,6 +60,17 @@ const mention = await turn("mention only", {
 const mentionChanged = mention.languageChanged;
 const mentionLanguage = mention.language;
 
+// Issue #4, on the live path: the switch asked as a session's FIRST words. This is the
+// shape the unit tests could not see, because the sim attaches its picker value to the
+// message that opens a session — so `targetLanguage: "en"` competed with the request for
+// Spanish and, while the reply text came out in Spanish, every piece of state said
+// English: no pill, no picker move, English TTS voice, English transcript tags.
+const opener = await turn("asked in turn one", {
+  message: "Hey Sala, let's speak Spanish tonight.",
+  targetLanguage: "en",
+});
+const openerLanded = opener.isNewSession && opener.language === "es" && opener.languageChanged;
+
 const ended = await client.callTool({ name: "end_session", arguments: { sessionId: sid } });
 const out = ended.structuredContent as { review: { summary: string }; extractionPath: string };
 console.log(
@@ -77,6 +89,7 @@ console.log(`[past sessions] mixed-language sessions stored: ${switched}`);
 // ---- verdicts, in the shape scripts/run-qa.sh gates on (`: FAIL` on any line) ----
 const checks: Array<[string, boolean]> = [
   ["spoken request changed the session", germanChanged],
+  ["a switch in the first utterance lands", openerLanded],
   ["a mention of a language does not switch", !mentionChanged && mentionLanguage === "de"],
   ["the review names both languages", /french/i.test(out.review.summary) && /german/i.test(out.review.summary)],
   ["past sessions stored both languages", JSON.stringify(mine?.languages) === '["fr","de"]'],

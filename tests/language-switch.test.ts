@@ -225,3 +225,58 @@ describe("set_language tool", () => {
     expect(s.languageName).toContain("nl");
   });
 });
+
+describe("a switch asked in the FIRST utterance (issue #4)", () => {
+  /**
+   * The path a speaker demo actually walks: the learner opens the session by saying what
+   * they want, and the device has already attached its own picker value to the request.
+   * If the explicit parameter won, the words lost — Sala replied in Spanish while
+   * `language` stayed "en", so the pill never rendered, the picker stayed on English, the
+   * transcript was tagged English and the TTS voice was English. Caught in the browser
+   * pass on 2026-10-23, two exchanges before it was filmed.
+   */
+  it("the words beat the device's opening targetLanguage", async () => {
+    const r = await chat({ message: "Let's speak Spanish from now on.", targetLanguage: "en" });
+    expect(r.isNewSession).toBe(true);
+    expect(r.language).toBe("es");
+    expect(r.languageChanged).toBe(true);
+    expect(r.languageName).toBe("Spanish");
+    expect(lastChatPrompt()).toContain("native speaker of Spanish");
+    expect(lastChatPrompt()).toContain("just asked to switch from English");
+  });
+
+  it("tags the opening turn with the language it arrived in", async () => {
+    const r = await chat({ message: "Can we do German instead?", targetLanguage: "en" });
+    const sid = r.sessionId as string;
+    const rows = memory.getTranscript(sid);
+    expect(rows[0]).toMatchObject({ role: "user", language: "en" });
+    expect(rows[1]).toMatchObject({ role: "assistant", language: "de" });
+    expect(memory.languagesBySession([sid])[sid]).toEqual(["en", "de"]);
+  });
+
+  it("a first-utterance switch still reaches the review as a mixed session", async () => {
+    const r = await chat({ message: "Let's speak Portuguese now.", targetLanguage: "en" });
+    const sid = r.sessionId as string;
+    await chat({ message: "Obrigado, hoje fui ao mercado.", sessionId: sid });
+    llm.calls.length = 0;
+    await client.callTool({ name: "end_session", arguments: { sessionId: sid } });
+    const reviewCall = [...llm.calls].reverse().find((c) => c.phase === "review")!;
+    expect(reviewCall.system).toContain("NOT all one language");
+    expect(reviewCall.system).toContain("English");
+    expect(reviewCall.system).toContain("Portuguese");
+  });
+
+  it("an opening targetLanguage still wins when the words ask for nothing", async () => {
+    // Detection only fires on a request shape, so a plain greeting in the device's
+    // language is unaffected by the flip: the parameter is still honoured, not ignored.
+    const r = await chat({ message: "Bonjour, ça va ?", targetLanguage: "fr" });
+    expect(r.language).toBe("fr");
+    expect(r.languageChanged).toBe(false);
+  });
+
+  it("a first utterance that only MENTIONS a language does not switch", async () => {
+    const r = await chat({ message: "I wrote an essay about Chinese food.", targetLanguage: "en" });
+    expect(r.language).toBe("en");
+    expect(r.languageChanged).toBe(false);
+  });
+});

@@ -11,10 +11,10 @@ import { SalaClient } from "./mcp/client";
 import type { WireEvent } from "./mcp/wireLog";
 import type { EndSessionResult, SessionRecord } from "./mcp/types";
 import { chatRequestArgs, convReducer, initialConv } from "./state/conversation";
-import { deviceOrbVisible, isDeviceMode, isModeToggleKey } from "./state/presentation";
+import { deviceOrbVisible, deviceStateKey, isDeviceMode, isModeToggleKey } from "./state/presentation";
 import { micEnabled, voiceNext, VoiceEvent, VoiceState } from "./state/voiceMachine";
 import { localeFor, startStt, sttSupported, SttHandle } from "./voice/stt";
-import { cancelSpeech, DEFAULT_PIPER_URL, speak, TtsBackend } from "./voice/tts";
+import { browserVoiceFor, cancelSpeech, DEFAULT_PIPER_URL, speak, TtsBackend } from "./voice/tts";
 import { Orb, OrbState } from "./components/Orb";
 import { ConversationPane } from "./components/ConversationPane";
 import { Composer } from "./components/Composer";
@@ -315,6 +315,7 @@ export default function App() {
         : conv.sending || ending
           ? "thinking"
           : "idle";
+  const hasTurns = conv.turns.length > 0;
   const ready = conn.status === "ready";
 
   return (
@@ -359,7 +360,7 @@ export default function App() {
         <section className="chat-column">
           {device &&
             deviceOrbVisible({
-              hasTurns: conv.turns.length > 0,
+              hasTurns,
               hasReview: reviewResult !== null,
             }) && (
             // The presence orb is what a real Alexa device shows, so in device mode it
@@ -369,7 +370,7 @@ export default function App() {
             // while the review is open, so the payoff card gets its height back.
             <div className="device-orb" data-testid="device-orb" aria-hidden="true">
               <Orb state={orbState} size="large" />
-              <p className="device-state">{DEVICE_STATE_COPY[orbState]}</p>
+              <p className="device-state">{DEVICE_STATE_COPY[deviceStateKey(orbState, hasTurns)]}</p>
             </div>
           )}
           <ConversationPane
@@ -505,7 +506,8 @@ export default function App() {
 
       <footer className="footer-note">
         {PRODUCT_NAME} (working name) · {SIMULATION_LABEL} · voice I/O:{" "}
-        {ttsBackend?.kind === "piper" ? ttsBackend.voiceLabel : "browser Web Speech API"} — the
+        {ttsBackend?.voiceLabel ??
+          (browserVoiceFor(language) ? "browser Web Speech API" : "local Piper fallback")} — the
         voice layer simulates Alexa+'s device-side ASR/TTS; the MCP server receives text, exactly
         like a real Alexa+ add-on · MCP: {mcpUrl}
       </footer>

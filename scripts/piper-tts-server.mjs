@@ -88,8 +88,18 @@ const server = http.createServer(async (req, res) => {
   const lang = (url.searchParams.get("lang") ?? "en").slice(0, 2).toLowerCase();
   const model = MODELS[lang];
   const text = (url.searchParams.get("text") ?? "").slice(0, MAX_TEXT);
-  if (!model || !text) {
-    res.writeHead(400, { "content-type": "application/json", ...cors }).end(JSON.stringify({ error: "need lang + text" }));
+  // Split errors, deliberately. One `need lang + text` for both cases told a caller that
+  // it had forgotten to pass a language when it had passed `lang=es` perfectly well — the
+  // real reason is that no Spanish voice is installed here. The client shows this string
+  // in the on-screen notice, so it has to be the truth.
+  if (!model) {
+    res.writeHead(400, { "content-type": "application/json", ...cors }).end(
+      JSON.stringify({ error: `no Piper voice for lang "${lang}"`, voices: Object.keys(MODELS).sort() }),
+    );
+    return;
+  }
+  if (!text) {
+    res.writeHead(400, { "content-type": "application/json", ...cors }).end(JSON.stringify({ error: "need text" }));
     return;
   }
 

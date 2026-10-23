@@ -20,10 +20,31 @@ export function ConversationPane({
   interimTranscript?: string | null;
   orbState?: "idle" | "listening" | "thinking" | "speaking";
 }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const paneRef = useRef<HTMLDivElement | null>(null);
+  const lastSwitch = turns[turns.length - 1]?.switchedTo;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [turns.length, sending, interimTranscript]);
+    const pane = paneRef.current;
+    if (!pane) return;
+    // Scrolled HERE, not with `element.scrollIntoView()`: in device mode this pane sits
+    // inside a second scrollable ancestor (`.app-device .chat-column`), and
+    // scrollIntoView scrolls every ancestor it can reach. That dragged the whole column
+    // up, clipping the top of the presence orb off the frame (measured y = -26px in the
+    // browser pass, 2026-10-23) — and the orb is the first thing the camera sees.
+    const scrollTo = (top: number) => {
+      // Absent under jsdom (it implements no scrolling), so guard rather than throw in tests.
+      if (typeof pane.scrollTo === "function") pane.scrollTo({ top, behavior: "smooth" });
+    };
+    // The ⇄ pill is the money shot of the spoken-switch beat, and it sits at the TOP of
+    // Sala's bubble, which the usual pin-to-bottom pushed out of a 26vh pane. Show the
+    // handover, then let the reply text flow below it.
+    const pills = pane.querySelectorAll<HTMLElement>('[data-testid="language-switch"]');
+    const pill = pills.length ? pills[pills.length - 1] : null;
+    if (lastSwitch && pill) {
+      scrollTo(pane.scrollTop + pill.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12);
+      return;
+    }
+    scrollTo(pane.scrollHeight);
+  }, [turns.length, sending, interimTranscript, lastSwitch]);
 
   const state = orbState ?? (sending ? "thinking" : "idle");
 
@@ -40,7 +61,7 @@ export function ConversationPane({
   }
 
   return (
-    <div className="conversation" data-testid="conversation">
+    <div className="conversation" data-testid="conversation" ref={paneRef}>
       {turns.map((t, i) => (
         <div key={`${t.ts}-${i}`} className={`bubble bubble-${t.role}`}>
           {t.role === "assistant" && <Orb state="idle" size="small" />}
@@ -81,7 +102,6 @@ export function ConversationPane({
           </div>
         </div>
       )}
-      <div ref={bottomRef} />
     </div>
   );
 }

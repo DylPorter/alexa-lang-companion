@@ -220,9 +220,11 @@ verdicts rather than leaving Beat 7b to be discovered live.
 
 - `src/persona/languages.ts` — names/aliases in 10 languages (each language's own word for itself
   included: `allemand`, `coreano`, `日本語`), `normalizeLanguageCode()`, and `detectLanguageSwitch()`.
-- `chat` resolves language from the **stored session**, then an explicit `targetLanguage`, then the
-  words of the message. Returns `language`, `languageName`, `languageChanged` (all declared in
-  `outputSchema` — an undeclared field is a `-32602`, not a free add).
+- `chat` resolves language from the **words of the message** first, then an explicit
+  `targetLanguage`, then the **stored session**. Returns `language`, `languageName`,
+  `languageChanged` (all declared in `outputSchema` — an undeclared field is a `-32602`, not a free
+  add). The words come first because `targetLanguage` is a default a device carries in, not an
+  instruction — see the issue-#4 entry below.
 - `set_language` — the 6th tool, for a client that already understood the request.
 - `messages.language` (idempotent `ALTER TABLE` on open, so existing DB files keep working) →
   `end_session` tells the review prompt when a session covered two languages.
@@ -257,7 +259,59 @@ Bugs found while building it, each now a comment in the source:
 - Mistake identity is prefixed with the session's language **at the time of the review**, so a
   session that switched mid-way can under-count a repeated mistake class (`fr-past-…` will not match
   earlier `en-past-…` rows). Counts only ever come from real rows, so this can never inflate.
-- Piper has voices for en/fr/de on this box (downloaded models, `data/piper-voices/`). A spoken
-  switch to a language with no local model — Spanish, on the recording machine — has NOT been
-  listened to yet: the server side and the captions follow, what the audio does is checked below
-  and recorded as it turns out.
+- Piper has voices for en/fr/de on this box (`ls data/piper-voices` → `de_DE-thorsten-medium`,
+  `en_US-lessac-medium`, `fr_FR-siwis-medium`). A spoken switch to any other language is silent:
+  checked live on 2026-10-23, `GET /tts?lang=es&text=hola+mundo` → **HTTP 400, 28 bytes**. The
+  conversation, the captions, the transcript tags and the review all follow the switch — only the
+  audio does not exist. Beat 7b is therefore spoken in **French**, which does have a local voice.
+  Adding Spanish is one download (`es_ES-*` `.onnx` + `.onnx.json` into `data/piper-voices/` plus a
+  line in `MODELS`), deliberately not done at T-minus-10-hours: an untested voice model in a filmed
+  demo is a worse risk than a documented silent language.
+
+## 2026-10-23 (later) — the same feature, driven by hand in a browser
+
+The proofs above are scripted. A browser pass (Playwright, `?device=1`, mic faked by injecting
+transcripts into the STT capture path) drove the real UI to close the loop on the two things a
+script cannot show: whether the learner's words actually move the picture, and what the audio does.
+
+**Verified PASS, with the reading that proved it:**
+
+| what the learner did | what the screen did | evidence |
+|---|---|---|
+| said "let's speak French" mid-session | pill appeared above Sala's reply | text exactly `⇄ now speaking French` |
+| same | picker followed | `lang-fr` `aria-pressed="true"` |
+| then asked for Spanish (not in the picker) | picker showed the unlisted language | `lang-current` label "Spanish" |
+| same | transcript survived the switch | the pre-switch exchanges were still on screen |
+| same | TTS really rebinds | network: `GET /tts?lang=fr&text=…` → 200, 291,650 bytes |
+| closed the session | the server stored both | `list_sessions` → `languages: ["en","fr"]` |
+| console | clean | only the known 405 preflight note |
+
+**Four defects it caught that no test could see**, all fixed after this section:
+
+1. **A switch in the FIRST utterance was dropped** (issue #4). The sim attaches its picker value to
+   the message that opens a session, and the server let that parameter beat the words. So
+   `{message:"let's speak Spanish", targetLanguage:"en"}` came back `language:"en",
+   languageChanged:false` while the reply TEXT was Spanish — Sala speaking one language and every
+   piece of state claiming another. Reproduced twice, then fixed in `src/server/tools.ts` (words now
+   outrank the parameter) with 5 tests in `tests/language-switch.test.ts` and a live verdict in
+   `scripts/language-switch-proof.ts` ("a switch in the first utterance lands: PASS").
+2. **The money shot scrolled out of frame.** `.conversation` auto-pinned to the bottom with
+   `element.scrollIntoView()`, which scrolls EVERY scrollable ancestor — in device mode that yanked
+   `.app-device .chat-column` up too, clipping the top of the presence orb (measured `y=-26`) and
+   pushing the `⇄` pill (which sits at the top of Sala's bubble) above the pane's 26vh box
+   (`y=-40`, bubble top 194 vs box top 242). The pane now scrolls itself, never its ancestors, and
+   brings the newest pill into view instead of the bottom. The 26vh bound is kept on purpose — it is
+   the value that stopped the review card being sliced in half on 10-21.
+3. **The device reverted to first-run copy between turns.** `DEVICE_STATE_COPY.idle` is "say hi to
+   start", and `idle` is what the orb returns to after every exchange, so mid-conversation the
+   caption told the learner to say hi. `deviceStateKey()` now yields `waiting` ("ready when you are")
+   once the session has turns.
+4. **The honesty footer claimed the wrong voice engine.** It printed "browser Web Speech API"
+   whenever no utterance had run yet, on a browser whose `getVoices()` returns 0 — a claim about the
+   machine that the machine contradicted. It now names the path that will actually be taken
+   (`local Piper fallback` when the browser has no voices) and the real voice once one has spoken.
+   Related, same dishonesty in the server: `/tts` answered a MISSING VOICE with `{"error":"need lang
+   + text"}` — telling a caller it forgot a parameter it had passed. Now
+   `{"error":"no Piper voice for lang \"es\"","voices":["de","en","fr"]}`, verified live on an
+   isolated port (the demo stack was left running), and `speak()` distinguishes "no server" from
+   "no voice for this language" in the on-screen notice.

@@ -42,8 +42,12 @@ export const SIMULATION_LABEL = "Simulated Alexa+ experience";
  * (the SPEC's real-Alexa+ mapping: the MCP boundary receives text, the sim stands
  * in for the device-side voice stack).
  */
-export const DEVICE_STATE_COPY: Record<"idle" | "listening" | "thinking" | "speaking", string> = {
+export const DEVICE_STATE_COPY: Record<"idle" | "listening" | "thinking" | "speaking" | "waiting", string> = {
   idle: "say hi to start",
+  // A conversation in progress. `idle` alone reads as "this device has not been spoken
+  // to yet", so between turns of a live session it reverted to first-run copy in front of
+  // the camera — a companion that forgets the conversation is happening.
+  waiting: "ready when you are",
   listening: "listening…",
   thinking: "thinking…",
   speaking: "speaking…",

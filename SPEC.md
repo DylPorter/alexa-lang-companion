@@ -99,6 +99,13 @@ entry points, one persisted truth:
   must not hijack the session: "I speak French at work", "what's the word in Spanish?", "how do you
   say thank you in Korean" all leave the language alone, and those are asserted in
   `tests/languages.test.ts` alongside 22 shapes that must switch, in five languages.
+- **Words outrank the device's default.** An explicit `targetLanguage` on the same message does NOT
+  win: it is a default a client carries into the turn (the sim sends its picker value on the message
+  that OPENS a session), not an instruction live in that moment. Detection only fires on a request
+  shape, so nothing is lost by letting the learner speak over it — "let's speak Spanish" as someone's
+  FIRST words means Spanish, and the session, the transcript tags, the pill and the TTS voice all
+  move with it. The reverse order was issue #4: Sala answered in Spanish while every piece of state
+  said English, and it was invisible in unit tests because no test sent both.
 
 Consequences that make it one feature rather than a setter: `chat` resolves the language from the
 SESSION (not `targetLanguage ?? "en"`, which used to reset an ongoing French session every turn);
