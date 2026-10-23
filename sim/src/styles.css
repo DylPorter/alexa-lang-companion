@@ -12,6 +12,12 @@
   --text-dim: #a89d8e;
   --text-faint: #7c7264;
   --amber: #e8a44c;
+  /* Text drawn ON an --amber-soft plate. Same hue, lifted: amber-on-amber-soft
+     measures 3.9-5.3:1 depending on which card it sits over, which is under
+     WCAG AA for the 10.5-11px pill text these elements use. #f5c987 measures
+     5.4-7.3:1 on the same plates, so the chip clears 4.5:1 under both the
+     CSS-composited reading and the rendered-pixel reading taken in the browser. */
+  --amber-on-soft: #f5c987;
   --amber-soft: rgba(232, 164, 76, 0.16);
   --amber-glow: rgba(232, 164, 76, 0.35);
   --green: #8fbf7f;
@@ -383,7 +389,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   margin-left: 8px;
   vertical-align: 1px;
   background: var(--amber-soft);
-  color: var(--amber);
+  color: var(--amber-on-soft);
 }
 .recurrence-note {
   display: inline-block;
@@ -394,7 +400,7 @@ button:disabled { opacity: 0.45; cursor: default; }
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--amber-soft);
-  color: var(--amber);
+  color: var(--amber-on-soft);
 }
 
 .review-summary { color: var(--text); font-size: 13.5px; }

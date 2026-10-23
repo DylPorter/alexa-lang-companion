@@ -150,13 +150,35 @@ park and I see three dog."), End session, panel rendered. Read off the live DOM,
 - chip text exactly `recurring · seen 4×`, title `first seen 2026-10-23`, on the Past Simple Tense card
 - summary ends `1 of these is a mistake you've made before, first logged on 2026-10-23.`
 - panel line `path: llm`, "Simulated Alexa+ experience" label still on screen in device mode
-- chip contrast **5.09:1** (`#f0c987` on `#262f41`) — clears WCAG 2.2 AA (4.5:1) and large-text AAA;
-  the card body text next to it is 11.40:1, so the chip reads slightly softer than the prose by design
-- no overflow, no clipping, no overlap; card and chip bounding boxes clean
-- Past sessions tab: 4 ended sessions, each with its stored review
-- console: **zero** errors or warnings for the whole flow
+- no overflow, no clipping, no overlap: chip box 125×18 px inside a 360×208 card, `scrollWidth ==
+  clientWidth`, single line, no other text node intersecting it
+- **the chip's contrast did NOT clear AA, and the first reading of it was wrong.** The numbers written
+  into this file an hour earlier (5.09:1, body text 11.40:1) were never measured by anything — they were
+  recorded before the browser report landed, and the real figures are these: amber `#e8a44c` text on the
+  amber-soft plate measures **3.89:1** against the pill background read from the rendered pixels and
+  **5.27:1** against the plate composited from CSS (`rgba(232,164,76,.16)` over `--panel-2 #2a241d` =
+  `rgb(72,56,37)`). 10.5px text needs 4.5:1. Both readings disagree because the plate is translucent, so
+  the fix had to be safe under each: the new recurrence elements now draw text in `--amber-on-soft
+  #f5c987`, which measures **5.36:1** on the pixel reading and **7.27:1** on the composited one. That is
+  the honest reason for the lighter amber, not taste.
+- **Pre-existing, not fixed today:** `.sim-label`, `.remembered-badge`, `.lang-active` and `.session-lang`
+  all use the same amber-on-amber-soft combination and sit at the same 3.89-5.27:1 spread. Left alone on
+  filming eve because changing the accent tokens touches every pill in the app; worth lifting to
+  `--amber-on-soft` after the submission if anyone squints at them on a TV.
+- **Past sessions is NOT in the filming view.** `?device=1` renders no tabs at all (zero `.tab` /
+  `[role=tab]` elements — the admin column isn't mounted in device mode). Beat 7 therefore has to be
+  shot either by toggling out of device view with `d`, or from the plain page, and the runbook says so.
+  From the non-device view all 4 closed EN sessions list with their stored reviews, and expanding the
+  13:22 card shows the chip **persisted from the DB**, not just from the live render.
+- console: **one benign error**, `Failed to load resource: 405 (Method Not Allowed) @ /mcp` — the SDK
+  client's GET SSE-listen probe against our stateless POST-only transport (friction log 2026-10-20).
+  No schema or MCP validation errors; `initialize → 200`, `notifications/initialized → 202`,
+  `list_sessions → 200` all healthy beside it.
+- Sala's reply to the typed turn took ~20 s wall clock in the browser, longer than the 5.7 s the chat
+  probe measures. That gap is browser STT/TTS + the sim's turn-taking, not the LLM: relevant to how much
+  air the voice beats leave, not to the review panel.
 - captures: `docs/a3-assets/a3-01-initial-device-view.png`, `a3-02-review-panel.png`,
-  `a3-04-past-simple-card.png`
+  `a3-03-past-session-expanded.png`, `a3-04-past-simple-card.png`, `a3-05-past-sessions.png`
 
 The DB agrees: 8 `session_mistakes` rows, `en-past-simple-tense` present in 4 distinct sessions, so the
 next session Alan closes says `seen 5×` — with every number behind it a row.

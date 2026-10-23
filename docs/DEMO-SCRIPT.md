@@ -102,9 +102,16 @@ VO:
 
 ### Beat 7 — Past sessions persistence (2:20-2:40) [PROXY]
 
-Screen: switch to the Past sessions tab. Yesterday's session (seeded before recording, one
-honest prior session from rehearsal is fine: it IS a real prior session) with its language tag
-and stored review, expandable.
+Screen: switch to the Past sessions tab. Yesterday's session (from the real rehearsal closes — do NOT
+seed rows with a script, the count on the chip has to come from conversations that happened) with its
+language tag and stored review, expandable.
+
+**Verified 2026-10-23: the Past sessions tab does not exist in `?device=1`.** Device mode mounts no tabs
+at all (no `.tab`, no `[role=tab]` — the admin column isn't rendered), so this beat is shot either by
+toggling out with `d` or from the plain `http://localhost:5199` page, then back into device view. Do not
+discover this mid-take. Same check also found the chip's amber-on-amber-soft pill reading under WCAG AA at
+10.5px, so the recurrence elements now draw in `--amber-on-soft` (`#f5c987`, 5.4-7.3:1 depending on which
+way you composite the translucent plate) — see `docs/a2-qa.md`.
 VO:
 > "Every session stays. The DB file is the whole account: one file, portable, private, yours to
 > copy or delete. There is no third-party Alexa+ memory API for add-ons, so your memory living in
