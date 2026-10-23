@@ -3,7 +3,12 @@
  * `type === "text"` blocks, so a completion made only of `thinking` looks like an
  * empty reply. This calls the endpoint with the REAL review system prompt and the
  * real fixture, and prints block types + stop_reason + usage instead of filtered
- * text. Run:  npx tsx scripts/review-raw-blocks.ts [maxTokens] [temperature]
+ * text. Run:  npx tsx scripts/review-raw-blocks.ts [maxTokens] [temperature] [extraJson]
+ *
+ * `extraJson` is merged into the request body, which is how the reasoning-shape
+ * probes are run without editing this file each time:
+ *   npx tsx scripts/review-raw-blocks.ts 4096 0 '{"thinking":{"type":"disabled"}}'
+ *   npx tsx scripts/review-raw-blocks.ts 4096 0 '{"enable_thinking":false}'
  */
 import "dotenv/config";
 import { reviewSystemPrompt } from "../src/persona/prompts.js";
