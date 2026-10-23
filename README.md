@@ -1,4 +1,4 @@
-# Sala (working name) — the living-room language companion
+# Sala — the living-room language companion
 
 Amazon "Build, Ship, Shape" Developer Hackathon entry (`amazonappdev2026`), **Alexa+ track**. MIT licensed.
 
