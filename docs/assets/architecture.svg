@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="DejaVu Sans, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="9" refY="4.5" orient="auto">
+      <path d="M0,0 L0,9 L9,4.5 z" fill="#8ea0b8"/>
+    </marker>
+    <style>
+      .bg { fill: #0e1420; }
+      .band { fill: #16202f; stroke: #33445c; stroke-width: 2; stroke-dasharray: 9 7; }
+      .box { fill: #1b2739; stroke: #4a6285; stroke-width: 2.5; }
+      .core { fill: #18324a; stroke: #4da3ff; stroke-width: 3; }
+      .h1 { fill: #e8eef7; font-size: 34px; font-weight: 700; }
+      .h2 { fill: #cfe0f5; font-size: 24px; font-weight: 700; }
+      .body { fill: #a8bdd6; font-size: 20px; }
+      .mono { fill: #8fd6a8; font-size: 19px; font-family: DejaVu Sans Mono, monospace; }
+      .cap { fill: #7f92aa; font-size: 18px; font-style: italic; }
+      .lbl { fill: #dbe7f5; font-size: 19px; }
+      .line { stroke: #8ea0b8; stroke-width: 2.5; fill: none; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="900"/>
+  <text class="h1" x="80" y="66">Sala — Alexa+ language companion: how it actually fits together</text>
+
+  <!-- device side -->
+  <rect class="band" x="80" y="100" width="1440" height="140" rx="10"/>
+  <text class="h2" x="110" y="142">DEVICE SIDE — Amazon's, not ours</text>
+  <text class="body" x="110" y="178">wake word → mic audio → Alexa+ cloud ASR → understanding, response generation, UI rendering → speaker</text>
+  <text class="cap" x="110" y="210">a third-party MCP add-on never receives audio; we simulate this layer in the browser (Web Speech STT + local Piper TTS)</text>
+
+  <!-- arrow down -->
+  <path class="line" d="M800,240 L800,320" marker-end="url(#arrow)"/>
+  <text class="lbl" x="826" y="272">text in, text out</text>
+  <text class="cap" x="826" y="300">MCP over Streamable HTTP</text>
+
+  <!-- server core -->
+  <rect class="core" x="360" y="320" width="880" height="170" rx="12"/>
+  <text class="h2" x="392" y="362">Sala MCP server — TypeScript, self-hosted</text>
+  <text class="mono" x="392" y="398">protocol 2025-11-25 · @modelcontextprotocol/sdk 1.32.1</text>
+  <text class="body" x="392" y="432">chat · log_activity · recall · end_session · list_sessions</text>
+  <text class="cap" x="392" y="464">stateless transport: every durable thing lives in the store below, not in the process</text>
+
+  <!-- branches -->
+  <path class="line" d="M600,490 L340,570" marker-end="url(#arrow)"/>
+  <path class="line" d="M1000,490 L1260,570" marker-end="url(#arrow)"/>
+
+  <!-- memory -->
+  <rect class="box" x="110" y="570" width="520" height="230" rx="12"/>
+  <text class="h2" x="140" y="612">Long-term memory</text>
+  <text class="body" x="140" y="646">SQLite — one file, the user's own</text>
+  <text class="body" x="140" y="676">FTS5 keyword + bm25 + recency</text>
+  <text class="mono" x="140" y="706">accent-folding: remove_diacritics 2</text>
+  <text class="cap" x="140" y="740">no embeddings, no vector DB —</text>
+  <text class="cap" x="140" y="766">v1 is honestly keyword + recency</text>
+
+  <!-- llm -->
+  <rect class="box" x="970" y="570" width="520" height="230" rx="12"/>
+  <text class="h2" x="1000" y="612">LLM backend (env-selected)</text>
+  <text class="body" x="1000" y="646">Echo — offline, deterministic tests</text>
+  <text class="body" x="1000" y="676">Proxy — Anthropic-compatible dev</text>
+  <text class="body" x="1000" y="706">Bedrock — Nova Lite: coded, not run live</text>
+  <text class="cap" x="1000" y="740">review output is validated in code:</text>
+  <text class="cap" x="1000" y="766">an example not in the transcript is dropped</text>
+
+  <!-- money shot strip -->
+  <rect class="box" x="660" y="570" width="280" height="230" rx="12"/>
+  <text class="h2" x="686" y="608">end_session</text>
+  <text class="body" x="686" y="642">reads the real</text>
+  <text class="body" x="686" y="670">transcript, inline</text>
+  <text class="body" x="686" y="712">→ vocab + grammar</text>
+  <text class="body" x="686" y="740">+ summary, stored</text>
+  <text class="body" x="686" y="768">on the session</text>
+
+  <path class="line" d="M630,685 L660,685" marker-end="url(#arrow)"/>
+  <path class="line" d="M940,685 L970,685" marker-end="url(#arrow)"/>
+
+  <text class="cap" x="80" y="850">Next day: recall() pulls yesterday's logged activities into chat, and list_sessions shows every past review — state across sessions, with nothing invented.</text>
+  <text class="cap" x="80" y="880">The demo web app is a simulation of the Alexa+ experience (hackathon-sanctioned path); the MCP server itself is the real integration surface.</text>
+</svg>

@@ -30,6 +30,12 @@ QA evidence: [docs/a2-qa.md](docs/a2-qa.md). Submission checklist: [docs/SUBMISS
 
 ## Architecture: where the real Alexa+ boundary is
 
+![Sala architecture](docs/assets/architecture.png)
+
+The one-frame version of everything below (also as [`architecture.svg`](docs/assets/architecture.svg)
+for video use, and [`docs/architecture.mmd`](docs/architecture.mmd) as the editable source). No vector
+database and no audio path in it, because neither exists — see the two sections it summarises.
+
 Verified 2026-10-20 from the official MCP Toolkit docs
 (developer.amazon.com/docs/alexaplus/add-ons/mcp-toolkit-overview.html):
 

@@ -1,0 +1,17 @@
+%% Sala — source of truth for docs/assets/architecture.svg (the video frame).
+%% Edit the intent here; re-render the SVG by hand so the video frame stays legible at scale.
+%% Render in GitHub/README: this fence is a ```mermaid block when pasted into markdown.
+flowchart TB
+  subgraph DEV["DEVICE SIDE — Amazon's, not ours (simulated in the demo)"]
+    A["wake word → mic audio → Alexa+ cloud ASR → understanding, response gen, UI → speaker"]
+  end
+
+  A -- "text in, text out (an add-on never receives audio)" --> S
+
+  S["<b>Sala MCP server</b> — TypeScript, self-hosted<br/>protocol 2025-11-25 · @modelcontextprotocol/sdk 1.32.1<br/>chat · log_activity · recall · end_session · list_sessions"]
+
+  S --> M["<b>Long-term memory</b><br/>SQLite, one file, the user's own<br/>FTS5 keyword + bm25 + recency, accent folding<br/><i>no embeddings, no vector DB</i>"]
+  S --> E["<b>end_session</b><br/>reads the real transcript, inline<br/>→ vocab + grammar + summary stored on the session"]
+  E --> L["<b>LLM backend</b> (env-selected)<br/>Echo offline · Proxy dev · Bedrock Nova Lite prod<br/>model output validated in code: an example not in the transcript is dropped"]
+
+  M -. "recall() feeds yesterday's activities into chat · list_sessions shows past reviews" .-> S
