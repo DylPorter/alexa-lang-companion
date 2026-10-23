@@ -75,6 +75,16 @@ if [ "$RC" -ne 0 ]; then
   exit "$RC"
 fi
 
+# The spoken language switch, replayed on the SAME isolated server (~5 real turns, ~25 s).
+# Its verdicts append to $QA_LOG so the `: FAIL` count below gates them too — the switch is
+# part of the money shot now (Beat 7b), so it belongs in the pre-flight and not only in CI.
+npx tsx scripts/language-switch-proof.ts "http://127.0.0.1:${QA_PORT}/mcp" >>"$QA_LOG" 2>&1 && SW=0 || SW=$?
+grep -E '^\[switch\]|^\[past sessions\]' "$QA_LOG" | tail -8 || true
+if [ "$SW" -ne 0 ]; then
+  echo "run-qa: language-switch proof exited ${SW} — see ${QA_LOG}" >&2
+  exit "$SW"
+fi
+
 FAILED="$(grep -c ': FAIL\|NO-ITEMS' "$QA_LOG" || true)"
 if [ "${FAILED:-0}" -gt 0 ]; then
   echo "run-qa: ${FAILED} verdict(s) failed — see ${QA_LOG}"

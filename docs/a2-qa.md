@@ -212,6 +212,10 @@ turn*, so the thread really is unbroken; the summary names both languages instea
 session was one; and the stored tag is a list, which is what `list_sessions.languages[]` renders as
 `fr → de` in Past sessions.
 
+`scripts/run-qa.sh` now replays this proof on its own isolated server and gates on it, so the pre-flight
+on recording morning says `[switch] spoken request changed the session: PASS` next to the money-shot
+verdicts rather than leaving Beat 7b to be discovered live.
+
 ### What was built
 
 - `src/persona/languages.ts` — names/aliases in 10 languages (each language's own word for itself
