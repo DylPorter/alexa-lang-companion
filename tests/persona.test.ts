@@ -45,8 +45,11 @@ describe("chat persona prompt — language-agnostic contract", () => {
 
   it("forbids fabricated memories — the fact-checker integrity rule", () => {
     const prompt = chatSystemPrompt(CFGS[0], []);
-    expect(prompt).toMatch(/HARD RULE: reference ONLY facts that appear in RECALLED CONTEXT/i);
+    expect(prompt).toMatch(/HARD RULE: reference ONLY facts that appear in those two blocks/i);
     expect(prompt).toMatch(/never invent/i);
+    // ...and the two blocks are named, so the model is told which memory surfaces exist
+    expect(prompt).toMatch(/RECALLED CONTEXT is what this turn's words matched/i);
+    expect(prompt).toMatch(/CONTINUING FROM is your standing history/i);
   });
 
   it("carries no recalled block when nothing was retrieved (honesty)", () => {

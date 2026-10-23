@@ -22,6 +22,9 @@ QA evidence: [docs/a2-qa.md](docs/a2-qa.md). Submission checklist: [docs/SUBMISS
 - **Remembers your life.** `log_activity` stores what you did. `chat` genuinely retrieves stored
   material (FTS5 keyword + recency) and weaves it in only when relevant. The sim shows a
   "remembered" badge **only** when the server flag `memoryReferenced` is true.
+- **Carries the conversation over the End-session line.** `end_session` stores a summary, and
+  every later turn hands the three most recent ended sessions' own summaries to the model as a
+  `CONTINUING FROM` block. Pressing End session ends a conversation, not the relationship.
 - **Follows up on what you were waiting for.** Say "I'm stressed about my job interview on
   Monday" and the NEXT session opens with "so — how did the interview go?" Each event is asked
   about once, ever; the question carries the date you said it and a quote of your own words.
@@ -255,6 +258,31 @@ curl -X POST http://127.0.0.1:3000/demo/load-history \
 curl -X POST http://127.0.0.1:3000/demo/clear-history \
   -H 'content-type: application/json' -H 'origin: http://localhost:5173' -d '{}'
 ```
+
+### Two surfaces for the same wire
+
+The filming beat "this is really an MCP server, and it really goes and fetches your history" has
+two halves, deliberately different views of one truth:
+
+- **MCP Tool-Call Inspector** (console view, right-hand drawer) — the **client** side. Every
+  JSON-RPC frame the sim sent and received: method, tool name, HTTP status, latency, and the real
+  request/response payloads on click. Rendered from the live transport, not a mock, which is why
+  `initialize → 200`, `notifications/initialized → 202`, `tools/call chat → 200` are honest
+  evidence for the protocol beat.
+- **The server terminal** — the far end of that same wire. Each call prints a receipt line, and a
+  `chat` turn prints what it pulled out of SQLite before answering:
+
+```
+[sala] ← tools/call chat · 141 B from http://localhost:5199
+[sala] ⛁ chat · from storage: recall=1 follow_ups=1 habits=1 past_sessions=3 transcript=1 language=en
+[sala] ⛁ continuity lines (3):
+[sala]     2026-10-17 · English · You practiced English talking about: interview, stressed, dinner…
+[sala] → tools/call chat · 200 · 7050 ms
+```
+
+Counts are always logged; the payload text itself needs `SALA_LOG_CONTEXT=1` (a flag, not a build
+change), because learner messages are personal data and a terminal is something you leave visible
+while recording. See `src/server/log.ts`.
 
 These are loopback HTTP routes on the same server, **not MCP tools**, and they only answer to the
 sanctioned sim origin (plus the CORS preflight a JSON body forces). A voice assistant must never

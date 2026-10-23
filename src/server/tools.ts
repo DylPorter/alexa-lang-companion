@@ -13,6 +13,7 @@ import { LLM, ChatMessage } from "../llm/types.js";
 import { chatSystemPrompt } from "../persona/prompts.js";
 import { detectLanguageSwitch, languageName, normalizeLanguageCode } from "../persona/languages.js";
 import { finishSession } from "./session.js";
+import { logFetched, logPayload } from "./log.js";
 import { ACCOUNT_ID, DEFAULT_NATIVE_LANGUAGE, DEFAULT_TARGET_LANGUAGE } from "../config.js";
 
 export interface SalaDeps {
@@ -227,9 +228,31 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       // prompt is rebuilt each turn, so a once-per-session instruction would quietly
       // stop working after the first reply.
       const emphasis = memory.recurringMistakes({ language: nextLanguage, minSessions: 2 });
+      /**
+       * Standing continuity (2026-10-24, Dylan): "it shows up on past sessions but not into
+       * the voice conversation model". `list_sessions` had the history; the prompt did not,
+       * because the only route into the prompt was an FTS hit on THIS message — so a new
+       * session after End session began blank unless the learner's first words happened to
+       * match stored text. Ended sessions' own summaries are stored rows; hand them over on
+       * every turn (the prompt is rebuilt per turn, so a once-per-session injection would
+       * quietly stop working after the first reply). Newest three, this session excluded.
+       */
+      const recentSessions = memory
+        .listSessions()
+        .filter((s) => s.id !== sid && s.summary && s.endedAt)
+        .slice(0, 3)
+        .map((s) => ({
+          summary: s.summary as string,
+          date: s.date.slice(0, 10),
+          languageName: languageName(s.language),
+        }));
 
-      // Both are stored rows handed to the model, so both light the "remembered" badge —
-      // but they reach the client through their own fields, never folded into `recall`.
+      // Both are stored rows handed to the model for THIS turn, so both light the
+      // "remembered" badge — but they reach the client through their own fields, never
+      // folded into `recall`. Standing continuity deliberately does not count: it is on
+      // every turn once a learner has any history, so including it would make the badge
+      // constant and therefore meaningless. The badge answers "did Sala look something up
+      // for what you just said", not "does Sala know you".
       const memoryReferenced = contextLines.length > 0 || offered.length > 0;
 
       const system = chatSystemPrompt(
@@ -239,6 +262,7 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
           justSwitchedFrom: switched ? previousLanguage : undefined,
           followUps: offered.length > 0 ? offered : undefined,
           emphasis: emphasis.length > 0 ? emphasis : undefined,
+          recentSessions: recentSessions.length > 0 ? recentSessions : undefined,
         },
         contextLines,
       );
@@ -248,6 +272,23 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         .slice(-12)
         .map((m) => ({ role: m.role, content: m.content }));
       history.push({ role: "user", content: message });
+
+      // The half the sim inspector cannot show: this side of the wire went and READ
+      // something. Counts always; the payload lines with SALA_LOG_CONTEXT=1.
+      logFetched("chat", {
+        recall: contextLines.length,
+        follow_ups: offered.length,
+        habits: emphasis.length,
+        past_sessions: recentSessions.length,
+        transcript: history.length,
+        language: nextLanguage,
+      });
+      logPayload("recalled context", contextLines);
+      logPayload("follow-up quotes", offered.map((f) => `${f.topic} · ${f.saidAt} · "${f.quote}"`));
+      logPayload(
+        "continuity lines",
+        recentSessions.map((r) => `${r.date} · ${r.languageName} · ${r.summary}`),
+      );
 
       let reply = (await llm.invoke("chat", system, history)).trim();
       if (!reply) {
@@ -444,6 +485,14 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         };
       }
       const { review: ended, path, followUps } = finished;
+      logFetched("end_session", {
+        messages: memory.getTranscript(sessionId).length,
+        vocabulary: ended.vocabulary.length,
+        grammar: ended.grammar.length,
+        via: path,
+        follow_ups_stored: followUps.length,
+      });
+      logPayload("stored for next session", followUps.map((f) => `${f.topic} — "${f.quote}"`));
       const blocks = [
         { type: "text" as const, text: JSON.stringify(ended, null, 2) },
         // Spoken-proof line: the follow-ups are the part of the money shot the viewer

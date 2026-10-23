@@ -34,6 +34,7 @@ import http from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { buildSalaServer, SalaDeps } from "./tools.js";
 import { loadSampleHistory, wipeHistory } from "./demo.js";
+import { logDone, logIncoming } from "./log.js";
 
 export const MCP_PATH = "/mcp";
 export const HEALTH_PATH = "/health";
@@ -204,6 +205,23 @@ export function createSalaHttpServer(deps: SalaDeps, opts: SalaHttpOptions = {})
         return;
       }
       if (res.writableEnded) return;
+
+      /**
+       * Terminal receipt line (2026-10-24, Dylan: "I need to show my screen of the MCP
+       * server terminal receiving requests and fetching context payloads"). The JSON-RPC
+       * method, plus the tool name for a tool call — read off the frame the client actually
+       * sent, never reconstructed afterwards. Size from the body, caller from the Origin.
+       */
+      const frame = body as { method?: string; params?: { name?: string } };
+      const callName = frame?.method
+        ? frame.params?.name
+          ? `${frame.method} ${frame.params.name}`
+          : frame.method
+        : "POST /mcp";
+      const who = typeof origin === "string" ? ` from ${origin}` : " (no Origin: local process)";
+      logIncoming(callName, `${JSON.stringify(body).length} B${who}`);
+      const startedAt = Date.now();
+      res.on("finish", () => logDone(callName, res.statusCode, Date.now() - startedAt));
 
       // The transport itself validates message shape (initialize, tool calls,
       // notifications); we don't pre-gate payloads here.

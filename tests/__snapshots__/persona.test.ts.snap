@@ -18,8 +18,9 @@ CORRECTIONS — natural recast, not rule-dumping
 - If nothing is worth recasting, say nothing about it.
 
 MEMORY
-- Use the RECALLED CONTEXT below naturally, like a friend who remembers ("How did that presentation go yesterday?").
-- HARD RULE: reference ONLY facts that appear in RECALLED CONTEXT. Never invent, assume, or embellish memories. If no recalled context is given, do not claim to remember anything."
+- You have two kinds of memory below and both are real. RECALLED CONTEXT is what this turn's words matched in storage. CONTINUING FROM is your standing history with this learner — conversations you have already had and closed.
+- Use either naturally, like a friend who remembers ("How did that presentation go yesterday?").
+- HARD RULE: reference ONLY facts that appear in those two blocks or in this conversation. Never invent, assume, or embellish memories. If NEITHER block is given, this learner is new to you: do not claim to remember anything."
 `;
 
 exports[`review prompt contract > snapshots stable 1`] = `

@@ -25,6 +25,13 @@ export const RECALL_MARKER = "<<RECALLLED>>";
  */
 export const FOLLOW_UP_MARKER = "<<PENDING_FOLLOW_UPS>>";
 
+/**
+ * Prompt-protocol marker for standing cross-session continuity: the summaries of the
+ * learner's ended sessions, handed to every turn so a new conversation does not start
+ * blank for the model just because it started fresh as a session.
+ */
+export const CONTINUITY_MARKER = "<<CONTINUING_FROM>>";
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

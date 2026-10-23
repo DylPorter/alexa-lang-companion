@@ -7,7 +7,7 @@
  * is a testable promise — tests/persona.test.ts asserts presence, and the A2 QA
  * checklist re-checks them against live output.
  */
-import { FOLLOW_UP_MARKER, RECALL_MARKER } from "../llm/types.js";
+import { CONTINUITY_MARKER, FOLLOW_UP_MARKER, RECALL_MARKER } from "../llm/types.js";
 import { languageName } from "./languages.js";
 
 export interface PersonaConfig {
@@ -46,6 +46,15 @@ export interface PersonaConfig {
    * apply — a point the learner did not actually make gets dropped).
    */
   emphasis?: Array<{ label: string; sessions: number; lastDate: string }>;
+  /**
+   * The learner's ENDED sessions, newest first, each carrying the summary written when
+   * that session closed. Standing context, handed to EVERY turn: pressing End session
+   * ends a conversation, not the relationship. Before this, the history was real but
+   * invisible to the model — it surfaced only if the current message happened to match
+   * stored text in FTS. Summaries are stored rows, so continuity stays a memory claim
+   * rather than a tone claim.
+   */
+  recentSessions?: Array<{ summary: string; date: string; languageName: string }>;
 }
 
 /**
@@ -76,8 +85,9 @@ CORRECTIONS — natural recast, not rule-dumping
 - If nothing is worth recasting, say nothing about it.
 
 MEMORY
-- Use the RECALLED CONTEXT below naturally, like a friend who remembers ("How did that presentation go yesterday?").
-- HARD RULE: reference ONLY facts that appear in RECALLED CONTEXT. Never invent, assume, or embellish memories. If no recalled context is given, do not claim to remember anything.`;
+- You have two kinds of memory below and both are real. RECALLED CONTEXT is what this turn's words matched in storage. CONTINUING FROM is your standing history with this learner — conversations you have already had and closed.
+- Use either naturally, like a friend who remembers ("How did that presentation go yesterday?").
+- HARD RULE: reference ONLY facts that appear in those two blocks or in this conversation. Never invent, assume, or embellish memories. If NEITHER block is given, this learner is new to you: do not claim to remember anything.`;
 
   if (recalledContext.length > 0) {
     prompt += `\n\n${RECALL_MARKER}\n${recalledContext.map((c) => `- ${c}`).join("\n")}`;
@@ -88,7 +98,32 @@ MEMORY
   if (cfg.emphasis?.length) {
     prompt += `\n\n${emphasisBlock(cfg.emphasis)}`;
   }
+  if (cfg.recentSessions?.length) {
+    prompt += `\n\n${continuityBlock(cfg.recentSessions, target)}`;
+  }
   return prompt;
+}
+
+/**
+ * The continuity block — what carried across the End-session line.
+ *
+ * Line format is machine-readable (`- <yyyy-mm-dd> · <language> · <summary>`) for the same
+ * reason the follow-up block is: Echo and the tests read the bytes back instead of
+ * pattern-matching prose, so "the model was given the history" stays provable.
+ */
+export function continuityBlock(
+  sessions: NonNullable<PersonaConfig["recentSessions"]>,
+  target: string,
+): string {
+  const lines = sessions.map((s) => `- ${s.date} · ${s.languageName} · ${s.summary}`).join("\n");
+  return `${CONTINUITY_MARKER}
+Conversations you have already had with this learner, each summarised when it ended (newest first):
+${lines}
+
+HOW TO USE THEM
+- This is continuity, not an announcement. You already know these things — you do not have to say you remember them. Let them shape what you ask about and how you phrase it in ${target}.
+- If the learner's turn touches one of these threads, follow it like a friend would ("still at the climbing wall, then?"), briefly and in passing.
+- HARD RULE: nothing outside this list and this conversation is a shared past. Never quote a summary line back, never mention a session or its date as a fact about the learner's life, and never infer an event that is not written here.`;
 }
 
 /**

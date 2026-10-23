@@ -15,9 +15,9 @@
  * heuristic path (src/review/extract.ts) that runs for every backend; the LLM
  * review pass is an enhancement only the live backends (Proxy/Bedrock/OpenAI/Gemini) add.
  */
-import { ChatMessage, LLM, FOLLOW_UP_MARKER, RECALL_MARKER } from "./types.js";
+import { ChatMessage, LLM, CONTINUITY_MARKER, FOLLOW_UP_MARKER, RECALL_MARKER } from "./types.js";
 
-export { FOLLOW_UP_MARKER, RECALL_MARKER };
+export { CONTINUITY_MARKER, FOLLOW_UP_MARKER, RECALL_MARKER };
 
 /** One parsed follow-up line from the prompt block (see `followUpBlock`). */
 interface ParsedFollowUp {
@@ -68,6 +68,19 @@ export class EchoLLM implements LLM {
     const [followUp] = parseFollowUpLines(system);
     if (followUp) {
       return `Welcome back! How did the ${followUp.topic} go? You said on ${followUp.saidOn}: "${followUp.quote}" — tell me about it.`;
+    }
+
+    // Continuity beat: the standing history block, if this learner has ended sessions.
+    // Like the follow-up beat, Echo says the bytes out loud — proof for the offline
+    // replay that a new session is NOT starting blank. The live persona is told the
+    // opposite: to let the history shape the question instead of reciting it.
+    const contIdx = system.indexOf(CONTINUITY_MARKER);
+    if (contIdx !== -1) {
+      const line = system
+        .slice(contIdx)
+        .split("\n")
+        .find((l) => l.startsWith("- "));
+      if (line) return `Picking up where we left off — ${line.slice(2).trim()}`;
     }
 
     // Memory beat: reference the first genuinely recalled item.

@@ -240,6 +240,33 @@ live JSON-RPC (proves the server is real MCP, judges love seeing the seam), and 
 - No secrets in the repo; `.env` gitignored; LLM via env-configurable backend.
 - Friction log entries for every tool/API/SDK friction (10% judging bonus material).
 
+## Cross-session continuity (added 2026-10-24, from Dylan's run-through)
+
+Symptom: everything the memory features produced showed up in the **Past sessions** tab and in
+`recall`, but the *model* behaved as if a new session were a blank slate. Cause: the only route
+into the chat prompt was an FTS match on the current message, plus the two per-turn injections. A
+session opened with "hi" retrieved nothing, so the history was real and unread.
+
+Fix: `PersonaConfig.recentSessions` — the newest three ENDED sessions (`summary` + date + language,
+all stored rows, current session excluded) rendered as a `CONTINUING FROM` block on **every** turn,
+because the prompt is rebuilt per turn and a once-per-session injection quietly stops working after
+the first reply. The block is framed as continuity rather than announcement: let it shape what Sala
+asks about, never quote a summary line back, never cite a session or its date as a fact about the
+learner's life. The MEMORY section now names both memory surfaces (RECALLED CONTEXT = retrieved for
+this turn; CONTINUING FROM = standing history), otherwise the older "if no recalled context is
+given, do not claim to remember anything" rule contradicts the new block into being ignored.
+
+Integrity consequences, chosen deliberately:
+- `memoryReferenced` does NOT light from the standing block. It answers "did Sala look something up
+  for what you just said"; a block present on every turn would make the badge constant, and a
+  constant badge carries no information. Follow-ups still light it — those are retrieved on the
+  opening turn and spent.
+- Nothing is invented: the block projects `sessions.summary`, which `end_session` wrote from the
+  transcript under the existing verbatim rules.
+- `SALA_LOG_CONTEXT=1` prints the exact lines handed to the model on the server terminal
+  (`src/server/log.ts`), so "the model was given the history" is checkable without trusting a test
+  double. The inspector shows the client half of the same wire; the terminal shows the server half.
+
 ## Demo-setup HTTP routes (added 2026-10-23)
 
 `POST /demo/load-history` and `POST /demo/clear-history` on the Sala server back the sim's two
