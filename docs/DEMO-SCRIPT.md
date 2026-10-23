@@ -12,7 +12,8 @@ in the footer and in `demo.sh`'s banner is the only on-screen difference.
 **Record in the device view: `?device=1`** (see README → Presentation modes). The product is a
 speaker in a living room, so the frame should read that way — orb leading, conversation full width,
 the review appearing inline as a card instead of in a side pane. Press `d` to flip to the console
-view for **Beat 4b** below (the one deliberate wire-inspector shot), then `d` again to come back.
+view twice at most — **Beat 4b** (the deliberate wire-inspector shot) and the 4 seconds of **Beat 7c**
+(the Past sessions list, which device mode does not render) — and `d` again to come back each time.
 The "Simulated Alexa+ experience" label stays on screen in both modes; never crop it out.
 
 ### Beat 4b — the runtime-evidence cut (12 s, inside Beat 4's window)
@@ -72,15 +73,18 @@ VO:
 
 ### Beat 5 — Voice mode exchange (1:20-1:50) [PROXY]
 
-Screen: flip the language picker to Français. Tap the mic (listening state, orb pulse). Speak
-one short French turn: "Salut Sala ! Hier je suis allé au marché avec ma sœur." Manual stop.
-Sala replies in French by voice (Piper label in the footer on Dylan's Linux box; browser voice
-on macOS/Windows). Mic re-arms after speech ends.
+Screen: stay in device view. Tap the mic (listening state, orb pulse). Speak one short English
+turn: "Hey Sala, yesterday I went to the market with my sister." Manual stop. Sala replies by
+voice (Piper label in the footer on this box; browser voice on macOS/Windows), mic re-arms after
+speech ends.
 VO (over the exchange, low):
-> "Half-duplex, like a real conversation: Sala never talks over you. The mic re-arms only after
-> it finishes speaking. Same MCP path as the text turns. The inspector shows the identical
-> JSON-RPC under both."
+> "Half-duplex, like a real conversation: Sala never talks over you. The mic re-arms only after it
+> finishes speaking. Same MCP path as the text turns; the inspector shows the identical JSON-RPC
+> under both."
 
+**Stay in English through this beat and Beat 6.** Changing language mid-session is the feature
+(Beat 7), but doing it here would re-key this session's mistake identities under the new language
+and the recurrence chip in Beat 6 would not fire. Sequence matters, it is not a limitation.
 Quiet room. One rehearsed sentence, spoken slowly. Background noise causes mis-transcripts or
 no-speech ends.
 
@@ -100,24 +104,52 @@ VO:
 > own sentences as the examples, the mistakes you actually made as the grammar points. If you
 > made none, the grammar section says so instead of inventing teaching points."
 
-### Beat 7 — Past sessions persistence (2:20-2:40) [PROXY]
+### Beat 7 — You just ask: memory and language, said out loud (2:20-2:45) [PROXY]
 
-Screen: switch to the Past sessions tab. Yesterday's session (from the real rehearsal closes — do NOT
-seed rows with a script, the count on the chip has to come from conversations that happened) with its
-language tag and stored review, expandable.
+The beat that makes this a speaker product rather than a chatbot with an orb on it. Two asks, both
+spoken, both in the device view, and neither one touches a control.
+
+**7a — cross-session memory, asked (2:20-2:31).** Beat 6 closed its session, and the sim starts a
+fresh one on the next message (just talk, no reset button). Say or type:
+> "Did I ever tell you which route I fell on at the climbing wall?"
+
+On screen: Sala names the route from the session that already ended, and the `✦ remembered` badge
+appears. That badge renders **only** off the server's `memoryReferenced` flag, which is true only
+when FTS5 genuinely retrieved stored rows — so the badge IS the rehearsal check. No badge, no take:
+re-word the question so it shares a keyword with what was really said ("climbing wall", "route",
+"gym"). Recall is keyword + recency, not semantic — "did I tell you about exercise?" returns nothing,
+and Sala says it has nothing stored. That refusal is the same feature; half a line on it is free.
+
+**7b — change language by asking (2:31-2:38).** Same new session:
+> "Actually, let's speak French."
+
+Sala answers in French, out loud, opening with one short clause acknowledging the switch ("Okay,
+français à partir de maintenant!"), and a `⇄ now speaking French` pill renders above the reply. The
+conversation is never restarted, the picker is never touched, and the device voice rebinds to the
+French Piper model with that reply. For the architecture cut, the explicit call is `set_language`,
+sitting on the tool list beside `chat`.
+
+**7c — 4 s of B-roll for the persistence line.** Cut to the Past sessions list (device-view warning
+below), one card open showing its stored review and its `en → fr` language tag, then back out.
+VO (running across 7a-7c):
+> "Sala remembers across sessions because you asked it to, and you change language the way you'd
+> tell a friend. Every session stays — the DB file is the whole account: one file, portable,
+> private, yours to copy or delete. There is no third-party Alexa+ memory API for add-ons, so your
+> memory living in a file instead of someone else's graph is the architecture, not a workaround."
 
 **Verified 2026-10-23: the Past sessions tab does not exist in `?device=1`.** Device mode mounts no tabs
-at all (no `.tab`, no `[role=tab]` — the admin column isn't rendered), so this beat is shot either by
+at all (no `.tab`, no `[role=tab]` — the admin column isn't rendered), so 7c is shot either by
 toggling out with `d` or from the plain `http://localhost:5199` page, then back into device view. Do not
 discover this mid-take. Same check also found the chip's amber-on-amber-soft pill reading under WCAG AA at
 10.5px, so the recurrence elements now draw in `--amber-on-soft` (`#f5c987`, 5.4-7.3:1 depending on which
 way you composite the translucent plate) — see `docs/a2-qa.md`.
-VO:
-> "Every session stays. The DB file is the whole account: one file, portable, private, yours to
-> copy or delete. There is no third-party Alexa+ memory API for add-ons, so your memory living in
-> a file instead of someone else's graph is the architecture, not a workaround."
 
-### Beat 8 — Close (2:40-3:00) [PROXY]
+Rehearsal note for 7b: "switch to French" is in the tested table; "maybe we could do French
+sometime?" is not — and it *should not* switch, that is the false-positive guard. Don't paraphrase
+the line into something softer on camera, and don't ask it in French: the request is recognised in
+five languages, but the shortest phrasing is the safest transcript.
+
+### Beat 8 — Close (2:45-3:00) [PROXY]
 
 Screen: home view, inspector open, honesty pill visible.
 VO:
@@ -229,6 +261,21 @@ go public, so swap the wording. Verified against the source on 10-23, not from m
    fast, the review is not. Claim the retrieval discipline instead: **"only the relevant recalled
    context goes into the prompt, so the conversation stays cheap and quick. The review is the one slow
    call, and it is worth waiting for."**
+
+## New since the above was flagged — safe to claim on camera
+
+Verified in the running build on 2026-10-23, not from the plan:
+
+- **You change language by talking.** "Let's speak French", "switch to German", "lass uns deutsch
+  sprechen", "hablemos español" all retarget the live session — same transcript, same session id,
+  voice and review follow. `set_language` is the direct tool call for a client that already did the
+  understanding. Evidence: `npx tsx scripts/language-switch-proof.ts` (a French session that asks for
+  German mid-conversation, replies 3.2-5.3 s apart, review that says *"They then switched to German…"*,
+  session stored as `["fr","de"]`), plus 22 switch shapes and 19 must-not-switch shapes under test.
+  The one thing NOT to say: that it understands any phrasing. It recognises request shapes; a soft
+  paraphrase is deliberately ignored so that "what's the word in Spanish?" can't hijack a session.
+- **Mistake recurrence across sessions** (issue #2) — see claim 4 above.
+- **Review latency is inside the take** — see claim 3 above.
 
 Bonus filming note: the demo lines in 0:40-1:15 say the target language is German but the learner's
 spoken lines are English. Pick one. If Alan wants his own ESL story the learner speaks English errors
