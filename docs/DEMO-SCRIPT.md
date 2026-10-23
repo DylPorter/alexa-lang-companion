@@ -256,6 +256,13 @@ go public, so swap the wording. Verified against the source on 10-23, not from m
    land) and the summary ends with "2 of these are mistakes you've made before, first logged on
    2026-10-23." The panel shows a `recurring · seen 2×` chip.
 
+   `2×` above is the shape of the sentence, not the number to expect. Read off `data/sala.db` on
+   2026-10-23: `en-past-simple-tense` is stored in **4 distinct earlier sessions**, so the next
+   English close renders `recurring · seen 5×`. Never write the digit into the VO — say "it says how
+   many times" and let the chip carry the number, because the number moves every time anybody
+   rehearses. The same DB has 5 sessions left OPEN from browser testing (no review card, harmless in
+   the 7c B-roll, and they are real conversations, not seeded rows).
+
    **So the recurrence on camera has to be earned, not staged.** Before the take, close 2-3 real
    sessions in the same target language that each contain the same mistake class — the past-tense one
    ("Yesterday I go to climbing wall and I am very tire") is the natural candidate because the
