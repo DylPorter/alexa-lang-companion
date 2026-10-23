@@ -31,7 +31,7 @@ across sessions."
    │    recall = FTS5 keyword + recency; NO embeddings for v1 (honest simplicity)
    │    portability pitch: the DB file is the user's — production identity via OAuth 2.1
    │    account linking (documented, stubbed for demo as a single-user account id)
-   └─ LLM backend: swappable Echo/Proxy/Bedrock classes (same shape proven in
+   └─ LLM backend: swappable Echo/Proxy/Bedrock/OpenAI/Gemini classes (same shape proven in
         firetv-factcheck/backend/verify_agent.py — Dylan's own in-window code, clean-room OK)
         dev = qwen proxy (ANTHROPIC_BASE_URL); **Bedrock = FIRST-CLASS core backend
         (steered 10-20): Bedrock via converse API, @aws-sdk/client-bedrock-runtime, as the
@@ -44,9 +44,19 @@ across sessions."
         whose SCP denies bedrock:CallWithBearerToken (so API keys are unusable), SigV4 authenticates,
         and the Free account plan then returns a first-call "Too many tokens per day". The recorded
         demo therefore runs on the proxy or echo path unless that enablement lands. The AWS Builder
-        entry is claimed only if a live Bedrock run is on screen or in the smoke output.** Selection:
-        explicit SALA_LLM=bedrock|proxy|echo, else
-        AWS creds present → bedrock, else ANTHROPIC_BASE_URL → proxy, else echo
+        entry is claimed only if a live Bedrock run is on screen or in the smoke output.**
+        BYOK lanes (added 10-23, because Bedrock must not be the only way to run this):
+        **OpenAILLM** = any OpenAI-compatible /chat/completions server (OPENAI_API_KEY,
+        optional OPENAI_BASE_URL) and **GeminiLLM** = Google v1beta :generateContent
+        (GEMINI_API_KEY or GOOGLE_API_KEY, precedence as Google's docs state it). Same LLM
+        interface, same /health reporting, same smoke gating. STATUS, same rule as Bedrock:
+        implemented and pinned by 28 offline tests that stub fetch, **no live provider reply
+        observed yet** — neither author holds such a key here, so the teammate's run is the
+        first evidence. Selection:
+        explicit SALA_LLM=echo|proxy|bedrock|openai|gemini (an unknown value is a startup
+        error, not a silent fall-through to echo), else
+        AWS creds present → bedrock, else ANTHROPIC_BASE_URL → proxy, else a Gemini key →
+        gemini, else an OpenAI key → openai, else echo
 ```
 
 ## Real-Alexa+ architecture mapping (VERIFIED 10-20 from official docs)

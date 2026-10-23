@@ -9,7 +9,7 @@
  *
  * The review phase is NOT modelled here: review extraction has a deterministic
  * heuristic path (src/review/extract.ts) that runs for every backend; the LLM
- * review pass is an enhancement only ProxyLLM/BedrockLLM add.
+ * review pass is an enhancement only the live backends (Proxy/Bedrock/OpenAI/Gemini) add.
  */
 import { ChatMessage, LLM, RECALL_MARKER } from "./types.js";
 

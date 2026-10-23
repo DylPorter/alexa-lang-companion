@@ -8,7 +8,7 @@ using that personal context, and ends each session with grammar/vocabulary revie
 generated from what you actually said. The review cards quote your own sentences, verbatim.
 
 **Status: A1 (server core) + A2 (web sim + voice mode) + A3 (submission polish) COMPLETE.
-181/181 offline tests green, demo proven end-to-end in English, French and German over a live
+280/280 offline tests green (re-verified in a network namespace 10-23), demo proven end-to-end in English, French and German over a live
 Anthropic-compatible backend (review extraction on the LLM path in all three, verbatim integrity
 5/5 · 5/5 · 7/7), review in 5-10 s, and cross-session mistake recurrence proven on real closed
 sessions. German voice ready.** Full spec: [SPEC.md](SPEC.md).
@@ -64,7 +64,7 @@ That quote decides the whole shape of this project:
                                                         │ list_sessions, set_language │
                                                         │                             │
                                                         │ SQLite + FTS5 memory        │
-                                                        │ Echo/Proxy/Bedrock LLM swap │
+                                                        │ swap: 5 LLM backends        │
                                                         └─────────────────────────────┘
                                                                 ▲ real MCP wire traffic
    device TTS ◀── Alexa+ NLG                    Web sim (React+Vite) as an MCP client
@@ -161,9 +161,35 @@ validated token subject. No schema change needed. See `src/config.ts`.
   (an Organizations SCP that denies the API-key auth path, then a Free-plan account with no paid
   Bedrock capacity), and both failures are written up in `docs/FRICTION-LOG.md` and the Product
   Feedback. The recorded demo runs on the proxy or echo path, and the README says which one on screen.
+- `OpenAILLM` — **bring your own key**, any OpenAI-compatible `/chat/completions`
+  endpoint. `OPENAI_API_KEY`, plus optional `OPENAI_BASE_URL` to point at a compatible
+  server (OpenRouter, Groq, LM Studio, Ollama). Output-budget field and temperature are
+  chosen from the model id, because OpenAI's own spec deprecates `max_tokens` as "not
+  compatible with o-series models" while third-party compatible servers still expect it —
+  so a single literal would 400 on half the ids a teammate might paste.
+- `GeminiLLM` — **bring your own key**, Google's `v1beta …:generateContent`.
+  `GEMINI_API_KEY` or `GOOGLE_API_KEY` (Google's docs give `GOOGLE_API_KEY` precedence
+  when both are set, so this does too). Key rides in `x-goog-api-key`, never a `?key=`
+  query string, because query strings land in access logs. No thinking field is sent:
+  Gemini 3+ rejects the 2.x budget field and 2.x rejects the level field, so omitting is
+  the only shape that works across ids.
 
-Selection: explicit `SALA_LLM=echo|proxy|bedrock`, else AWS creds present → bedrock, else
-`ANTHROPIC_BASE_URL` → proxy, else echo. The review extractor's LLM pass enhances the
+  **Status, under the same honesty rule as Bedrock above:** both BYOK lanes are
+  implemented, wired into auto-detection, `/health`, `run-qa.sh` and `npm run smoke`, and
+  pinned by 28 offline tests that stub `fetch` — but **no live provider reply has been
+  observed yet**, because neither author has a Gemini or OpenAI key on this machine. The
+  first live evidence is whoever's key runs it. Which is the point: Sala is not
+  Bedrock-only, and an endpoint nobody can obtain is not a runnable product.
+
+Selection: explicit `SALA_LLM=echo|proxy|bedrock|openai|gemini` — an unrecognised value is
+a startup error, not a silent fall-through to Echo, because Echo answers in canned English
+and looks exactly like a working demo — else AWS creds present → bedrock, else
+`ANTHROPIC_BASE_URL` → proxy, else a Gemini key → gemini, else an OpenAI key → openai,
+else echo. The BYOK lanes sit below the two author-side backends deliberately: a stray key
+exported in a shared shell must not quietly change which provider a recorded demo used. On
+a machine with neither set (every teammate machine), your key is what runs.
+
+The review extractor's LLM pass enhances the
 deterministic heuristic path and every LLM-proposed example is re-sourced verbatim from the
 transcript in code. Invented examples are dropped. Any LLM failure falls back to the heuristic.
 
@@ -213,18 +239,23 @@ arguably the most honest row in the panel.
 npm install
 npm start                     # MCP server on http://localhost:3000/mcp  (GET /health too)
 SALA_LLM=echo npm start       # force deterministic offline backend
-npm test                      # 181 tests, zero network (verified in a network namespace)
-npm run smoke                 # live proxy smoke (+ bedrock IFF AWS creds, else GATED)
+npm test                      # 280 tests, zero network (verified in a network namespace)
+npm run smoke                 # live smoke per backend that has a key; others GATED/SKIPPED
 npm run demo                  # server + web sim in one command
 npm run demo:voice            # same, but fails loudly if the local Piper fallback is missing
 ```
 
 Env: `SALA_LLM`, `SALA_DB_PATH` (default `./data/sala.db`, gitignored), `PORT` (3000),
 `SIM_PORT` (5173) for the demo script, `SALA_TARGET_LANG` / `SALA_NATIVE_LANG` (defaults
-`en`/`en`. Defaults are configuration, not identity), `SALA_MODEL` / `ANTHROPIC_MODEL` for the
-proxy model id, `BEDROCK_MODEL` / `AWS_DEFAULT_REGION` plus the standard AWS credential chain
-for Bedrock. A gitignored `.env` next to the repo root is loaded automatically. Secrets are
-never printed.
+`en`/`en`. Defaults are configuration, not identity). Model ids: `SALA_MODEL` plus the
+per-phase `SALA_REVIEW_MODEL` / `SALA_CHAT_MODEL` apply to **every** live backend; each
+backend also reads its own (`ANTHROPIC_MODEL` for proxy — proxy only, so an Anthropic id
+can never reach an OpenAI or Gemini URL, `OPENAI_MODEL`, `GEMINI_MODEL`,
+`BEDROCK_MODEL`). Keys/creds: `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`),
+`GEMINI_API_KEY` / `GOOGLE_API_KEY` (+ optional `GEMINI_BASE_URL`), `ANTHROPIC_BASE_URL` +
+`ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`, or the standard AWS credential chain. A
+gitignored `.env` next to the repo root is loaded automatically. Secrets are never printed,
+and no key is ever put in a URL.
 
 ### Cold run on a new machine (teammate guide)
 
@@ -249,7 +280,43 @@ not hold a real conversation. That is the point. Poke every pane first.
 On Windows use `set SALA_LLM=echo&& npm run demo` in cmd, or `$env:SALA_LLM="echo"; npm run demo`
 in PowerShell.
 
-**Real conversation needs one LLM backend, via env vars only.** The names and shapes:
+**Real conversation needs one LLM backend, via env vars only.** The easiest route is **your
+own key** — Sala is not Bedrock-only, and you need none of Dylan's credentials, no AWS
+account, and no gateway:
+
+```sh
+# Either one, then npm run demo. Nothing else to set.
+export GEMINI_API_KEY=…        # your own Gemini key from aistudio.google.com
+export OPENAI_API_KEY=…        # your own OpenAI key, or any OpenAI-compatible server
+```
+
+With no AWS creds and no `ANTHROPIC_BASE_URL` in the shell, auto-detection picks the backend
+from whichever key is present. Confirm before you record:
+
+```sh
+curl -s http://127.0.0.1:3000/health   # {"ok":true,"backend":"gemini"}
+npm run smoke                          # one live round trip per key present (never prints the key)
+```
+
+A backend you did not choose is a demo of the wrong thing, so read that one line. Model ids
+default to `gemini-3.8-flash` and `gpt-4o-mini`; override with `SALA_MODEL=<id>` (and
+`SALA_REVIEW_MODEL` alone for the end-of-session extraction). For OpenAI, the truth about
+which ids **your** key can call is `GET /models`:
+
+```sh
+curl -s -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models
+```
+
+Windows: `set GEMINI_API_KEY=…&& npm run demo` in cmd, or
+`$env:GEMINI_API_KEY="…"; npm run demo` in PowerShell.
+
+**Honest status of the two BYOK lanes:** they are implemented and test-pinned, but no live
+provider reply has been observed from this repo yet (neither author has such a key here), so
+your run is the first live evidence. If a turn comes back as "Sorry — I lost my words for a
+second", the `llm` warn line in the server output names the phase, the model id, and the
+provider's finish reason — paste that line to Dylan rather than the whole log.
+
+**Or use Dylan's gateway / Bedrock** (values come from him privately, see below):
 
 - Proxy mode: `ANTHROPIC_BASE_URL` (base URL without trailing slash. The client appends
   `/v1/messages`) plus `ANTHROPIC_AUTH_TOKEN` or `ANTHROPIC_API_KEY` (first non-empty wins).

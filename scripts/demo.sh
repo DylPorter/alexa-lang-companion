@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Sala one-command demo entry: MCP server + web sim.
-# Backend default is proxy unless SALA_LLM is set in the shell or in the gitignored .env.
+# Backend comes from SALA_LLM in the shell, then a SALA_LLM line in the gitignored
+# .env, else auto-detection (which is what picks up a teammate's own GEMINI_API_KEY
+# or OPENAI_API_KEY). /health prints whichever one won.
 # The server binds loopback only; the sim origin is sanctioned explicitly via
 # SALA_ALLOWED_ORIGINS (the strict production default is untouched).
 #
@@ -16,7 +18,7 @@ export PORT
 export SALA_ALLOWED_ORIGINS="${SALA_ALLOWED_ORIGINS:-http://localhost:${SIM_PORT}}"
 
 # Backend resolution, highest precedence first: an explicit shell SALA_LLM, then a
-# SALA_LLM line in the gitignored .env, then proxy.
+# SALA_LLM line in the gitignored .env, then auto-detection in src/llm/index.ts.
 #
 # demo.sh must NOT export a default when .env carries the value. dotenv never
 # overwrites an existing process.env entry, so `export SALA_LLM=proxy` here silently
@@ -34,9 +36,14 @@ if [ -n "${SALA_LLM:-}" ]; then
 elif [ -n "$ENV_LLM" ]; then
   : # leave it unset so the server reads it from .env
 else
-  export SALA_LLM="proxy"
+  # Also unset, so src/llm/index.ts auto-detects: AWS creds -> bedrock,
+  # ANTHROPIC_BASE_URL -> proxy, a Gemini key -> gemini, an OpenAI key -> openai,
+  # else echo. This used to export `proxy` as the fallback, which on a machine that
+  # only has a BYOK key means ProxyLLM throws on a missing ANTHROPIC_BASE_URL and
+  # the demo comes up dead.
+  :
 fi
-BACKEND="${SALA_LLM:-$ENV_LLM}"
+BACKEND="${SALA_LLM:-${ENV_LLM:-auto-detect}}"
 # Tell the sim where THIS server lives (matters whenever PORT != 3000, e.g.
 # PORT=3100 on a machine where 3000 belongs to another process).
 export VITE_MCP_URL="${VITE_MCP_URL:-http://127.0.0.1:${PORT}/mcp}"
@@ -73,7 +80,7 @@ cat <<EOF
 
   Sala — demo runbook
   ─────────────────────────────────────────────────────────────
-     LLM backend: ${BACKEND:-echo} (resolved from shell > .env > proxy default)
+     LLM backend: ${BACKEND} (shell > .env > auto-detect — confirm with the curl below)
      Confirm it before recording:  curl -s http://127.0.0.1:${PORT}/health
   1. Open the sim:      http://localhost:${SIM_PORT}
      (the sim auto-points at this server via VITE_MCP_URL; ad-hoc override

@@ -2,8 +2,10 @@
  * Sala MCP server entry point.
  *
  *   npm start            → http://127.0.0.1:3000/mcp  (Streamable HTTP)
- *   SALA_LLM=echo|proxy|bedrock  forces the backend; default selection order in
- *   src/llm/index.ts (AWS creds → Bedrock, ANTHROPIC_BASE_URL → Proxy, else Echo).
+ *   SALA_LLM=echo|proxy|bedrock|openai|gemini  forces the backend; default selection order
+ *   in src/llm/index.ts (AWS creds → Bedrock, ANTHROPIC_BASE_URL → Proxy, a Gemini key →
+ *   Gemini, an OpenAI key → OpenAI, else Echo) — so a teammate who only exports his own
+ *   key needs no flag at all. /health reports which one actually won.
  *   SALA_DB_PATH defaults to ./data/sala.db (gitignored) — the file is the user's.
  *
  * SECURITY (local-first demo): binds LOOPBACK by default — wider binding is an

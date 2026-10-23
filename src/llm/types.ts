@@ -20,7 +20,7 @@ export interface ChatMessage {
 }
 
 export interface LLM {
-  readonly name: "echo" | "proxy" | "bedrock";
+  readonly name: "echo" | "proxy" | "bedrock" | "openai" | "gemini";
   invoke(phase: "chat" | "review", system: string, messages: ChatMessage[]): Promise<string>;
 }
 
@@ -41,6 +41,11 @@ export interface LLM {
  * not for the cap, so this costs nothing when the model is brief. Review stays at
  * 8192 even after thinking switched off (see `thinkingForPhase`) — some gateways
  * ignore the flag, and a truncated review degrades SILENTLY to the heuristic panel.
+ *
+ * The same number is what every backend asks its provider for — `max_tokens` /
+ * `max_completion_tokens` on the OpenAI lane, `maxOutputTokens` on Gemini — because
+ * the truncation failure mode is provider-independent, even though the field names
+ * are not. Keep them in sync here rather than per-backend.
  */
 export function maxTokensFor(phase: "chat" | "review"): number {
   return phase === "chat" ? 2048 : 8192;
@@ -60,11 +65,41 @@ export function modelForPhase(
   fallback: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string {
+  return resolveModel(phase, fallback, env, env.ANTHROPIC_MODEL);
+}
+
+/**
+ * Same per-phase precedence for a bring-your-own-key backend, minus the
+ * Anthropic-specific legacy var, plus that provider's own model var:
+ *   SALA_REVIEW_MODEL / SALA_CHAT_MODEL > SALA_MODEL > <PROVIDER>_MODEL > default.
+ *
+ * Why not just reuse modelForPhase: on this machine `ANTHROPIC_MODEL` is exported
+ * by the harness (qwen3.8-flash), and handing that id to api.openai.com or
+ * generativelanguage.googleapis.com is a 400 on a teammate's first call — the one
+ * failure mode a BYOK path must not have. The provider var is passed in (not read
+ * here) so the caller decides which name it honours, and a whitespace-only value
+ * counts as unset exactly like the proxy path does.
+ */
+export function byokModelFor(
+  phase: "chat" | "review",
+  fallback: string,
+  providerModel?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveModel(phase, fallback, env, providerModel);
+}
+
+function resolveModel(
+  phase: "chat" | "review",
+  fallback: string,
+  env: NodeJS.ProcessEnv,
+  providerVar?: string,
+): string {
   const phaseKey = phase === "review" ? env.SALA_REVIEW_MODEL : env.SALA_CHAT_MODEL;
   return (
     (phaseKey ?? "").trim() ||
     (env.SALA_MODEL ?? "").trim() ||
-    (env.ANTHROPIC_MODEL ?? "").trim() ||
+    (providerVar ?? "").trim() ||
     fallback
   );
 }

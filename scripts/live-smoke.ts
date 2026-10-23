@@ -2,7 +2,9 @@
  * Live smoke — acceptance evidence, NOT part of `npm test` (needs network).
  *
  *   npm run smoke            → proxy smoke (ANTHROPIC_BASE_URL / .env) + Bedrock
- *                              smoke IFF AWS creds exist, else Bedrock = GATED.
+ *                              smoke IFF AWS creds exist, else Bedrock = GATED,
+ *                              + the two bring-your-own-key lanes (gemini, openai)
+ *                              IFF their key is present, else SKIPPED.
  *
  * Drives a real MCP client over Streamable HTTP against an in-process server:
  * one ESL chat exchange + one end_session review per available live backend.
@@ -20,6 +22,8 @@ import { createSalaHttpServer } from "../src/server/http.js";
 import { MemoryStore } from "../src/memory/db.js";
 import { ProxyLLM } from "../src/llm/proxy.js";
 import { BedrockLLM, hasAwsEnvCreds } from "../src/llm/bedrock.js";
+import { OpenAILLM, hasOpenaiEnvCreds } from "../src/llm/openai.js";
+import { GeminiLLM, hasGeminiEnvCreds } from "../src/llm/gemini.js";
 import type { LLM } from "../src/llm/types.js";
 
 /**
@@ -167,6 +171,33 @@ async function main(): Promise<void> {
   } else {
     // GATED, not failed: AWS enablement is a separate human task.
     console.log("=== bedrock smoke: GATED (no AWS creds in env/.env) ===");
+  }
+
+  // The two bring-your-own-key lanes. These are the only backends a teammate can
+  // run without AWS or Dylan's gateway, and the offline suite only stubs fetch —
+  // so a green `npm test` says nothing about whether the real provider accepts the
+  // request. Whatever the provider answers here is the evidence, and a key that is
+  // absent is SKIPPED (nothing to verify), not passed.
+  if (hasGeminiEnvCreds()) {
+    const probe = new GeminiLLM();
+    console.log(
+      `=== gemini creds: ${process.env.GOOGLE_API_KEY ? "GOOGLE_API_KEY" : "GEMINI_API_KEY"} · model ${probe.modelFor("chat")} ===`,
+    );
+    ranAny = true;
+    if (!(await runBackend("gemini", probe))) failed.push("gemini");
+  } else {
+    console.log("=== gemini smoke: SKIPPED (no GEMINI_API_KEY / GOOGLE_API_KEY) ===");
+  }
+
+  if (hasOpenaiEnvCreds()) {
+    const probe = new OpenAILLM();
+    console.log(
+      `=== openai creds: OPENAI_API_KEY · base ${probe.baseUrl} · model ${probe.modelFor("chat")} ===`,
+    );
+    ranAny = true;
+    if (!(await runBackend("openai", probe))) failed.push("openai");
+  } else {
+    console.log("=== openai smoke: SKIPPED (no OPENAI_API_KEY) ===");
   }
 
   if (!ranAny) {

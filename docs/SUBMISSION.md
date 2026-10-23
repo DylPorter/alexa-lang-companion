@@ -145,12 +145,22 @@ tools."*
 Everything else is built and proxy-proven. The demo video does NOT depend on this step. Update
 10-22: `.env` now exists on disk (mode 600, gitignored) with `SALA_LLM=proxy`, and that backend is
 proven from the file alone, so recording day needs no setup on this machine. Alan's machine is the
-other case: he runs echo mode, which needs no `.env` at all. A Bedrock-backed video would still be
+other case: echo mode still works with no `.env` at all, and since 10-23 he is no longer limited to
+it — one `GEMINI_API_KEY` or `OPENAI_API_KEY` of his own gives a real conversation with no AWS and
+no credential from Dylan (README, "Cold run on a new machine"). A Bedrock-backed video would still be
 one env var away, but with Builder not claimed there is no reason to touch it.
 
-**Post-hackathon (BYOK):** the public shape is Bedrock as the demo default with proxy/echo as
-bring-your-own-key options. Echo mode is already the zero-secret onboarding path and the backends
-sit behind one interface, so BYOK is a README/docs framing change, not a rebuild.
+**BYOK — shipped 10-23.** The paragraph that used to sit here planned it as post-hackathon docs
+framing ("Bedrock as the demo default with proxy/echo as bring-your-own-key options"), which was
+really a euphemism for "a teammate cannot run this without Dylan's gateway". Two real lanes now
+exist behind the same one-method interface: `OpenAILLM` (any OpenAI-compatible
+`/chat/completions` server) and `GeminiLLM` (Google `v1beta …:generateContent`). They rank below
+Bedrock and the proxy in auto-detection so a stray key in a shared shell cannot silently change
+which provider a recorded demo used; `SALA_LLM=openai|gemini` forces them anywhere.
+**Status, same rule as the Bedrock paragraph above:** 28 offline tests with `fetch` stubbed, wired
+into `/health`, `demo.sh`, `run-qa.sh` and `npm run smoke`, and **no live provider reply observed
+yet** — neither author holds a Gemini or OpenAI key on this machine, so whoever's key runs it
+produces the first evidence. Echo mode remains the zero-secret onboarding path.
 
 ## Pre-flight (repo hygiene, before going public)
 

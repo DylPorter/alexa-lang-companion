@@ -6,6 +6,8 @@
 #
 #   bash scripts/run-qa.sh              # full replay (~2-4 min, makes ~20 LLM calls)
 #   SALA_LLM=echo bash scripts/run-qa.sh  # same flow, offline, zero spend
+#   SALA_LLM=gemini bash scripts/run-qa.sh # same flow on your own key (BYOK lanes:
+#   SALA_LLM=openai bash scripts/run-qa.sh #  gemini | openai — see README, Cold run)
 #
 # Uses its own port and its own DB so it can never pollute the demo state you are
 # about to film with. Reads .env exactly like npm start does.
@@ -16,7 +18,12 @@ cd "$ROOT"
 
 # Must be a real variable, not just a command prefix: `set -u` makes any later
 # reference to $SALA_LLM die when it was only ever passed inline to npm start.
-export SALA_LLM="${SALA_LLM:-proxy}"
+# Empty (the default) means "whatever src/llm/index.ts auto-detects", which is what
+# lets a teammate run this on his own Gemini/OpenAI key without knowing the flag.
+# It used to default to `proxy`, which on a machine with no gateway means ProxyLLM
+# throws at startup and run-qa prints "server never became healthy" — a config
+# error dressed up as a QA failure.
+export SALA_LLM="${SALA_LLM:-}"
 QA_PORT="${QA_PORT:-3101}"
 QA_DB="${QA_DB:-/tmp/sala-qa.db}"
 QA_LOG="${QA_LOG:-/tmp/sala-qa-run.log}"
@@ -59,8 +66,19 @@ case "$BACKEND" in
   *'"ok":true'*) echo "run-qa: isolated server up on :${QA_PORT} ${BACKEND}" ;;
   *) echo "run-qa: server never became healthy on :${QA_PORT} — see ${SERVER_LOG}" >&2; exit 1 ;;
 esac
-if [ "$SALA_LLM" != "echo" ] && ! grep -q '"backend":"proxy"' <<<"$BACKEND"; then
+# /health names the backend that actually won selection, so compare it with what was
+# asked (when anything was asked — an empty SALA_LLM means auto-detect, which is the
+# BYOK path). Used to hardcode "proxy", which mis-warned on every other backend.
+ACTUAL="$(sed -n 's/.*"backend":"\([^"]*\)".*/\1/p' <<<"$BACKEND")"
+if [ -n "$SALA_LLM" ] && [ -n "$ACTUAL" ] && [ "$SALA_LLM" != "echo" ] && [ "$ACTUAL" != "$SALA_LLM" ]; then
   echo "run-qa: WARNING — asked for ${SALA_LLM}, server reports ${BACKEND}" >&2
+fi
+# Only when echo was NOT the choice: `SALA_LLM=echo bash scripts/run-qa.sh` is the
+# documented offline flow, and nagging about it would be noise. Landing on echo by
+# auto-detection is the surprise worth a line — it means no key reached the server.
+if [ -z "$SALA_LLM" ] && grep -q '"backend":"echo"' <<<"$BACKEND"; then
+  echo "run-qa: NOTE — the server is on echo (the offline fallback): this replay exercises no live model." >&2
+  echo "         For a real replay: export a key (GEMINI_API_KEY / OPENAI_API_KEY) or set SALA_LLM=proxy|bedrock." >&2
 fi
 
 echo "run-qa: replaying the persona + money-shot probe (this makes real LLM calls)..."
