@@ -8,19 +8,28 @@
  * checklist re-checks them against live output.
  */
 import { RECALL_MARKER } from "../llm/types.js";
+import { languageName } from "./languages.js";
 
 export interface PersonaConfig {
   /** Language the companion speaks (learner's target). Demo: decided at A2 time. */
   targetLanguage: string;
   /** Learner L1 hint — also the review-panel language. English-first for the demo. */
   nativeLanguage: string;
-}
-
-export function languageName(code: string): string {
-  return (
-    LANGUAGE_NAMES[code.toLowerCase()] ??
-    `the language with BCP-47 code "${code}"`
-  );
+  /**
+   * Set when THIS turn began with a spoken request to change language ("let's speak
+   * French"). The server has already persisted the new language by the time the prompt
+   * is built, so this only tells the persona to acknowledge the change out loud instead
+   * of silently restarting mid-sentence — which is what a speaker does, and what makes
+   * the switch legible to whoever is watching the demo.
+   */
+  justSwitchedFrom?: string;
+  /**
+   * Languages actually spoken in this session, in the order they appeared, set only
+   * when there is more than one. A learner can say "let's speak French" halfway
+   * through, and a review that describes the whole session as the language it ENDED
+   * in would be describing a conversation that did not happen.
+   */
+  sessionLanguages?: string[];
 }
 
 /**
@@ -30,11 +39,16 @@ export function languageName(code: string): string {
  */
 export function chatSystemPrompt(cfg: PersonaConfig, recalledContext: string[]): string {
   const target = languageName(cfg.targetLanguage);
+  // Spoken handover: one short clause in the NEW language, then carry on in it.
+  const switchNote = cfg.justSwitchedFrom
+    ? `\n- The learner just asked to switch from ${languageName(cfg.justSwitchedFrom)}. Open this reply by acknowledging it in ${target} in ONE short clause ("okay, French from here"), then stay in ${target}. Do not switch back.`
+    : "";
   let prompt = `You are Sala, a warm living-room companion who chats with the user on their speaker — a friend who happens to be a native speaker of ${target}, NOT a tutor, never a classroom.
 
 LANGUAGE
 - Speak ${target} by default, comprehensible-input style: natural but slightly simplified, everyday words, short sentences — never babyish.
 - The learner's first language may be ${languageName(cfg.nativeLanguage)}; if they clearly struggle, you may briefly reassure them, but stay in ${target}.
+- The learner can ask to change language mid-session, and the server does the changing. Speak whatever language you are told to speak — never debate it, never announce that you cannot switch.${switchNote}
 
 FRIEND, NOT TUTOR
 - Be warm and curious about their day. Ask ONE follow-up question per reply.
@@ -64,10 +78,16 @@ MEMORY
 export function reviewSystemPrompt(cfg: PersonaConfig): string {
   const target = languageName(cfg.targetLanguage);
   const reviewLang = languageName(cfg.nativeLanguage);
+  const mixed =
+    cfg.sessionLanguages && cfg.sessionLanguages.length > 1
+      ? `\nThis session was NOT all one language: it covered ${cfg.sessionLanguages
+          .map(languageName)
+          .join(", ")}, switching partway when the learner asked. Judge each of the learner's own sentences in the language they actually said it in, and mention the switch in the summary. Never attribute a sentence to a language the learner did not use it in.\n`
+      : "";
   return `You generate an end-of-session language review for a learner of ${target}.
 
 You receive the full transcript of one conversation session between the learner and Sala. Produce review material that derives EXCLUSIVELY from what the learner actually said in this transcript.
-
+${mixed}
 Write the review in clear simple ${reviewLang} (the learner's own language — the review panel is for learning, not immersion).
 
 Respond with ONLY a JSON object, no prose:
@@ -83,15 +103,3 @@ HARD RULES
 - The summary must describe only topics present in the transcript.`;
 }
 
-const LANGUAGE_NAMES: Record<string, string> = {
-  en: "English",
-  es: "Spanish",
-  fr: "French",
-  de: "German",
-  vi: "Vietnamese",
-  ja: "Japanese",
-  it: "Italian",
-  pt: "Portuguese",
-  ko: "Korean",
-  zh: "Chinese",
-};

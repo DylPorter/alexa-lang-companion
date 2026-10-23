@@ -22,11 +22,18 @@
  */
 import { ChatMessage, LLM } from "../llm/types.js";
 import { GrammarItem, Review, VocabItem } from "../memory/db.js";
-import { languageName, reviewSystemPrompt } from "../persona/prompts.js";
+import { reviewSystemPrompt } from "../persona/prompts.js";
+import { languageName } from "../persona/languages.js";
 
 export interface ExtractionConfig {
   targetLanguage: string;
   nativeLanguage: string;
+  /**
+   * Languages actually spoken, when a session switched mid-way. Forwarded to the review
+   * prompt so it does not describe a two-language conversation as a one-language one;
+   * the heuristic path ignores it (its tables are keyed on `targetLanguage` alone).
+   */
+  sessionLanguages?: string[];
 }
 
 // --------------------------------------------------------------- mistake tables

@@ -4,7 +4,8 @@
  * ANY target language (no language hardcoding).
  */
 import { describe, expect, it } from "vitest";
-import { chatSystemPrompt, reviewSystemPrompt, languageName } from "../src/persona/prompts.js";
+import { chatSystemPrompt, reviewSystemPrompt } from "../src/persona/prompts.js";
+import { languageName } from "../src/persona/languages.js";
 import { RECALL_MARKER } from "../src/llm/types.js";
 
 const CFGS = [

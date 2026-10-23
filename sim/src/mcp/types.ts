@@ -10,6 +10,23 @@ export interface ChatResult {
   /** True ONLY when stored facts were genuinely retrieved server-side. */
   memoryReferenced: boolean;
   isNewSession: boolean;
+  /**
+   * The language Sala is speaking for this reply. It can differ from what the client
+   * asked for: the learner may have changed it by saying so.
+   */
+  language: string;
+  /** True when THIS turn moved the session to a new language. */
+  languageChanged: boolean;
+  /** `language` spelled out by the server — no client-side name table to drift. */
+  languageName: string;
+}
+
+export interface SetLanguageResult {
+  sessionId: string;
+  previousLanguage: string;
+  language: string;
+  languageName: string;
+  changed: boolean;
 }
 
 export interface LogActivityResult {
@@ -82,6 +99,12 @@ export interface SessionRecord {
   id: string;
   date: string;
   language: string;
+  /**
+   * Every language the session covered, in order. `["en", "fr"]` for one where the
+   * learner asked halfway through to change — rendered as "en → fr" rather than
+   * claiming the whole conversation was the language it ended in.
+   */
+  languages?: string[];
   summary: string | null;
   review: Review | null;
 }

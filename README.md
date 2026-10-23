@@ -27,6 +27,9 @@ QA evidence: [docs/a2-qa.md](docs/a2-qa.md). Submission checklist: [docs/SUBMISS
   is validated in code for verbatim containment before it can appear.
 - **Ends sessions with a review** (`end_session`): 4-6 vocabulary items and 1-2 grammar points,
   each carrying your own sentence as the example, plus a summary. This is the product's money shot.
+- **Changes language when you ask.** Mid-session, out loud: "let's speak French." The server
+  recognises the request (or a capable client calls `set_language` directly), the persona, the
+  review at the end and the device's voice all follow, and the conversation is never restarted.
 - **Speaks and listens** in the web sim (half-duplex turn taking, browser Web Speech API, local
   Piper neural TTS fallback on machines with no browser voices).
 
@@ -56,9 +59,9 @@ That quote decides the whole shape of this project:
                           Alexa+ = MCP client ──MCP──▶  ┌─────────────────────────────┐
                           (NLU, response generation,    │ MCP server (this repo)      │
                            UI rendering)                │ TypeScript, Streamable HTTP │
-                                                        │ 5 tools: chat, log_activity,│
+                                                        │ 6 tools: chat, log_activity,│
                                                         │ recall, end_session,        │
-                                                        │ list_sessions               │
+                                                        │ list_sessions, set_language │
                                                         │                             │
                                                         │ SQLite + FTS5 memory        │
                                                         │ Echo/Proxy/Bedrock LLM swap │
@@ -95,17 +98,22 @@ cards on real Alexa+ hardware. The web sim's review panel is that card, prototyp
 
 | tool | in | out |
 |---|---|---|
-| `chat` | `{message, sessionId?, targetLanguage?}` | `{reply, sessionId, memoryReferenced, isNewSession}` |
+| `chat` | `{message, sessionId?, targetLanguage?}` | `{reply, sessionId, memoryReferenced, isNewSession, language, languageName, languageChanged}` |
 | `log_activity` | `{text, when?}` | `{id}` |
 | `recall` | `{query?, since?, limit?}` | `{activities[], pastSessions[]}` |
 | `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}, extractionPath}` |
-| `list_sessions` | `{}` | `{sessions[{id, date, language, summary, review}]}` |
+| `set_language` | `{sessionId, language}` | `{sessionId, previousLanguage, language, languageName, changed}` |
+| `list_sessions` | `{}` | `{sessions[{id, date, language, languages[], summary, review}]}` |
 
 Every tool declares typed zod input AND output schemas, so clients get `structuredContent` on
 every success. `memoryReferenced` is true only when stored facts were genuinely retrieved and
 injected into the model prompt. `vocabulary[].example` and `grammar[].example` are always the
 learner's own sentences, displayed verbatim. Pass `sessionId` back on every follow-up turn.
-`chat` without one starts a new Sala session.
+`chat` without one starts a new Sala session. `targetLanguage` is only for OPENING a session —
+after that the server owns the language, because a device that re-asserted its picker every turn
+would overrule a learner who had just asked out loud for something else. `language` and
+`languageChanged` in the reply say what Sala is actually speaking now. `languages[]` on a past
+session lists every language it covered, in order (`["en","fr"]` for one that switched halfway).
 
 ## How memory works
 

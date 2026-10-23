@@ -11,6 +11,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { parseWireBody, WireEvent } from "./wireLog";
 import type {
   ChatResult,
+  SetLanguageResult,
   EndSessionResult,
   ListSessionsResult,
   LogActivityResult,
@@ -111,6 +112,17 @@ export class SalaClient {
   }): Promise<ChatResult> {
     const res = await this.client.callTool({ name: "chat", arguments: args });
     return structured<ChatResult>(res, "chat");
+  }
+
+  /**
+   * Change which language Sala speaks for the rest of a live session — the direct
+   * equivalent of a learner saying "let's speak French". `chat` can also work the
+   * request out from the words; this is the path for a client that already understood
+   * it, which is what a real Alexa+ device would be.
+   */
+  async setLanguage(args: { sessionId: string; language: string }): Promise<SetLanguageResult> {
+    const res = await this.client.callTool({ name: "set_language", arguments: args });
+    return structured<SetLanguageResult>(res, "set_language");
   }
 
   async logActivity(args: { text: string; when?: string }): Promise<LogActivityResult> {

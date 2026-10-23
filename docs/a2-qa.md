@@ -182,3 +182,78 @@ park and I see three dog."), End session, panel rendered. Read off the live DOM,
 
 The DB agrees: 8 `session_mistakes` rows, `en-past-simple-tense` present in 4 distinct sessions, so the
 next session Alan closes says `seen 5×` — with every number behind it a row.
+
+## 2026-10-23 (late) — changing language by asking, proven end to end
+
+The picker toggle was the wrong interaction for a speaker product, so the language is now a
+property of the **session** that the learner can change with their voice. `npx tsx
+scripts/language-switch-proof.ts` against the live proxy server (real calls, nothing mocked):
+
+```
+[open in French] 4.8s · language=fr · French
+  Bonjour ! Tu as trouvé quelque chose de spécial au marché ?
+[reply in French] 5.3s · language=fr · French
+  Des fraises et du pain, parfait ! Les fraises étaient bonnes ?
+[ASK FOR GERMAN] 3.2s · language=de (CHANGED) · German
+  Okay, Deutsch ab jetzt! Die Erdbeeren waren bestimmt süß, oder?
+[reply in German] 4.7s · language=de · German
+  Ah, Anna! Ich erinnere mich, dass ihr zusammen kocht. Was habt ihr heute Abend vor?
+
+[end_session] path=llm
+  summary: The learner discussed visiting a market and buying strawberries and bread in French.
+           They then switched to German to mention that their girlfriend is named Anna and they
+           cook together.
+[past sessions] this session is tagged: ["fr","de"]
+```
+
+Four things that only show up in a run like this: the acknowledgement clause is in the NEW language
+(not a translation of the request); the German turn *recalled the strawberries from the French
+turn*, so the thread really is unbroken; the summary names both languages instead of pretending the
+session was one; and the stored tag is a list, which is what `list_sessions.languages[]` renders as
+`fr → de` in Past sessions.
+
+### What was built
+
+- `src/persona/languages.ts` — names/aliases in 10 languages (each language's own word for itself
+  included: `allemand`, `coreano`, `日本語`), `normalizeLanguageCode()`, and `detectLanguageSwitch()`.
+- `chat` resolves language from the **stored session**, then an explicit `targetLanguage`, then the
+  words of the message. Returns `language`, `languageName`, `languageChanged` (all declared in
+  `outputSchema` — an undeclared field is a `-32602`, not a free add).
+- `set_language` — the 6th tool, for a client that already understood the request.
+- `messages.language` (idempotent `ALTER TABLE` on open, so existing DB files keep working) →
+  `end_session` tells the review prompt when a session covered two languages.
+- Sim adopts the server's language instead of wiping the transcript, rebinds TTS/STT to it, and
+  renders `⇄ now speaking French` on the turn where the server reported the change.
+
+### Detection: 22 must-switch / 19 must-not-switch shapes (`tests/languages.test.ts`)
+
+Two-stage on purpose — find a token that IS a known language, then require a **request** shape next
+to it. The negatives are the load-bearing ones, because a language-practice conversation is mostly
+*mentions* of languages: "I speak French at work", "what's the word in Spanish?", "how do you say
+thank you in Korean", "I usually practice Vietnamese on Sundays", "my French is not very good" must
+all leave the session alone. Requests that work include `let's speak French`, `switch to Spanish
+please`, `I want to speak Spanish`, `parlons français`, `lass uns deutsch sprechen`, `hablemos
+español`, `passe au allemand`, `nur Deutsch bitte`, and `let's switch to pt`.
+
+Bugs found while building it, each now a comment in the source:
+- A module-level cue regex with the `/g` flag carries `lastIndex` **between calls**, so cues near the
+  start of a later message were silently missed. 18 of 18 positives "failed" for this one reason.
+- `practi[sz]e` never matched "practice" — the letter is a **c**, not s/z — and `spa[kz]t` never
+  matched "spoke". Abbreviated character classes hid a whole class of misses; the self-report guard
+  is now spelled-out word lists.
+- Cue matching by `includes()` is unsafe: "essay" contains "say", "know" contains "now". Cues get
+  word-boundary lookarounds.
+- Bare 2-letter codes are English function words (`it`, `de`), so a code only counts after an
+  explicit change verb; "Let's do it in French" skips the `it` candidate and finds `french`.
+
+### Known limits (stated, not hidden)
+
+- Under-claiming is the failure mode everywhere: an unrecognised phrasing means Sala keeps speaking
+  the old language and answers the question as content. It never switches to something unasked.
+- Mistake identity is prefixed with the session's language **at the time of the review**, so a
+  session that switched mid-way can under-count a repeated mistake class (`fr-past-…` will not match
+  earlier `en-past-…` rows). Counts only ever come from real rows, so this can never inflate.
+- Piper has voices for en/fr/de on this box (downloaded models, `data/piper-voices/`). A spoken
+  switch to a language with no local model — Spanish, on the recording machine — has NOT been
+  listened to yet: the server side and the captions follow, what the audio does is checked below
+  and recorded as it turns out.

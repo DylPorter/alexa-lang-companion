@@ -106,7 +106,11 @@ body {
 }
 .lang-option:hover:not(:disabled) { color: var(--text); }
 .lang-option:disabled { opacity: 0.5; cursor: default; }
-.lang-active { background: var(--amber-soft); color: var(--amber); }
+'.lang-active { background: var(--amber-soft); color: var(--amber); }
+/* The language in force when the picker has no button for it — reached by ASKING Sala
+   out loud ("let's speak Spanish"). Same plate as .lang-active, but it is a readout and
+   not a control, so it must not borrow the pointer affordance. */
+.lang-current { cursor: default; font-weight: 600; }
 
 /* ---------- layout ---------- */
 .layout {
@@ -178,6 +182,22 @@ body {
   background: var(--amber-soft);
   padding: 2px 8px;
   border-radius: 999px;
+}
+
+/* Spoken language handover: rendered only when the SERVER reported languageChanged, so
+   the line is evidence of a switch, not decoration. Colour is the measured AA-safe
+   amber (--amber-on-soft, see .recurrence-chip) — this sits on the assistant bubble over
+   --amber-soft, the same translucent plate combination that needed the lighter amber. */
+.language-switch {
+  display: block;
+  align-self: flex-start;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--amber-on-soft);
+  background: var(--amber-soft);
+  padding: 2px 8px;
+  border-radius: 999px;
+  margin-bottom: 6px;
 }
 
 .listening-tag { font-size: 11px; color: var(--red); align-self: flex-end; }

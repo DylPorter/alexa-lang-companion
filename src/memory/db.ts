@@ -31,6 +31,13 @@ export interface MessageRow {
   role: "user" | "assistant";
   content: string;
   createdAt: string;
+  /**
+   * Which language was in force for this turn. `""` means untagged — a row written
+   * before language switching existed, or a session that never changed. Tagging is
+   * what lets a session that started in English and finished in French say so in the
+   * review instead of pretending the whole transcript was one language.
+   */
+  language: string;
 }
 
 export interface VocabItem {
@@ -92,7 +99,9 @@ CREATE TABLE IF NOT EXISTS messages (
   account_id TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('user','assistant')),
   content TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  -- language in force for this turn ('' = written before switching existed)
+  language TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS activities (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -141,10 +150,27 @@ export class MemoryStore {
     this.db = new Database(path);
     this.db.pragma("journal_mode = WAL");
     this.db.exec(SCHEMA);
+    this.migrate();
   }
 
   close(): void {
     this.db.close();
+  }
+
+  /**
+   * Column additions for databases written before conversational language switching
+   * existed. SQLite has no `ADD COLUMN IF NOT EXISTS`, so the table shape is read
+   * first — this runs on every open and must stay a no-op once applied. Old DB files
+   * (including the one holding the rehearsal sessions behind the recurrence chip)
+   * have to keep opening, or the demo loses its own history.
+   */
+  private migrate(): void {
+    const cols = new Set(
+      (this.db.prepare(`PRAGMA table_info(messages)`).all() as Array<{ name: string }>).map((c) => c.name),
+    );
+    if (!cols.has("language")) {
+      this.db.exec(`ALTER TABLE messages ADD COLUMN language TEXT NOT NULL DEFAULT ''`);
+    }
   }
 
   // ------------------------------------------------------------------ sessions
@@ -237,15 +263,51 @@ export class MemoryStore {
     return { priorSessions: row.n ?? 0, firstDate: row.first_at ?? null };
   }
 
+  /**
+   * Languages actually spoken in each given session, in the order they first appear.
+   * One query for the whole page of sessions rather than one per row. Sessions whose
+   * rows predate language tagging come back with an empty list — the caller decides how
+   * to present that, because "we only know the language it ended in" is not the same
+   * claim as "this session was entirely in that language".
+   */
+  languagesBySession(sessionIds: string[]): Record<string, string[]> {
+    if (sessionIds.length === 0) return {};
+    const placeholders = sessionIds.map(() => "?").join(", ");
+    const rows = this.db
+      .prepare(
+        `SELECT session_id, language FROM messages
+         WHERE account_id = ? AND language <> '' AND session_id IN (${placeholders})
+         GROUP BY session_id, language
+         ORDER BY MIN(id) ASC`,
+      )
+      .all(this.accountId, ...sessionIds) as Array<{ session_id: string; language: string }>;
+    const out: Record<string, string[]> = {};
+    for (const r of rows) {
+      (out[r.session_id] ??= []).push(r.language);
+    }
+    return out;
+  }
+
   // ----------------------------------------------------------------- messages
 
-  addMessage(sessionId: string, role: "user" | "assistant", content: string): void {
+  /**
+   * Change the language a live session is spoken in. The session row keeps only the
+   * CURRENT language (so Past sessions tags it correctly); the history of what was
+   * spoken when lives in `messages.language`, not in a second column.
+   */
+  setSessionLanguage(sessionId: string, language: string): void {
+    this.db
+      .prepare(`UPDATE sessions SET language = ? WHERE id = ? AND account_id = ?`)
+      .run(language, sessionId, this.accountId);
+  }
+
+  addMessage(sessionId: string, role: "user" | "assistant", content: string, language = ""): void {
     this.db
       .prepare(
-        `INSERT INTO messages (session_id, account_id, role, content, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (session_id, account_id, role, content, created_at, language)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
-      .run(sessionId, this.accountId, role, content, new Date().toISOString());
+      .run(sessionId, this.accountId, role, content, new Date().toISOString(), language);
   }
 
   getTranscript(sessionId: string): MessageRow[] {
@@ -260,6 +322,7 @@ export class MemoryStore {
       role: r.role as "user" | "assistant",
       content: r.content as string,
       createdAt: r.created_at as string,
+      language: (r.language as string | undefined) ?? "",
     }));
   }
 

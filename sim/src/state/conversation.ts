@@ -11,6 +11,14 @@ export interface Turn {
   text: string;
   /** assistant turns only: server said stored facts were genuinely recalled. */
   remembered?: boolean;
+  /**
+   * Display name of the new language. Assistant turns only, and only when the SERVER
+   * changed language for this reply —
+   * because the learner asked out loud. The transcript labels the handover instead of
+   * silently restarting in another language, which is what makes a spoken switch
+   * reviewable (and filmable) after the fact.
+   */
+  switchedTo?: string;
   ts: number;
 }
 
@@ -57,6 +65,9 @@ export function convReducer(state: ConvState, action: ConvAction): ConvState {
             role: "assistant",
             text: action.result.reply,
             remembered: action.result.memoryReferenced === true,
+            // Only when the server actually moved the session — not merely because it
+            // echoed back the language the picker already showed.
+            switchedTo: action.result.languageChanged ? action.result.languageName : undefined,
             ts: action.ts,
           },
         ],
@@ -73,18 +84,20 @@ export function convReducer(state: ConvState, action: ConvAction): ConvState {
 }
 
 /**
- * The exact `chat` tool arguments for a user message: sessionId is passed
- * back every turn once known (A1 contract), targetLanguage always explicit
- * from the picker.
+ * The exact `chat` tool arguments for a user message.
+ *
+ * `targetLanguage` is sent ONLY to open a session. Re-asserting the picker every turn
+ * would mean the device's local idea of the language outranks whatever the server
+ * just switched to, so a learner saying "let's speak French" mid-session would be
+ * silently overruled by their own stale UI. After the first turn the server owns the
+ * session's language, reports it back in `language`, and the picker follows that.
  */
 export function chatRequestArgs(
   state: Pick<ConvState, "sessionId">,
   message: string,
   targetLanguage: string,
-): { message: string; sessionId?: string; targetLanguage: string } {
-  return {
-    message,
-    ...(state.sessionId ? { sessionId: state.sessionId } : {}),
-    targetLanguage,
-  };
+): { message: string; sessionId?: string; targetLanguage?: string } {
+  return state.sessionId
+    ? { message, sessionId: state.sessionId }
+    : { message, targetLanguage };
 }

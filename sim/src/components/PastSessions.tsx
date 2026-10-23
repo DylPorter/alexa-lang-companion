@@ -54,7 +54,17 @@ export function PastSessions({
               aria-expanded={open}
             >
               <span className="session-date">{formatDate(s.date)}</span>
-              <span className="session-lang" data-testid="session-lang">{s.language}</span>
+              <span
+                className="session-lang"
+                data-testid="session-lang"
+                title={
+                  s.languages && s.languages.length > 1
+                    ? `this session switched: ${s.languages.join(", ")}`
+                    : "language of this session"
+                }
+              >
+                {s.languages?.length ? s.languages.join(" → ") : s.language}
+              </span>
               <span className="session-chevron" aria-hidden>{open ? "▾" : "▸"}</span>
             </button>
             {s.summary && <p className="session-summary">{s.summary}</p>}

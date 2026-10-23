@@ -55,7 +55,7 @@ afterAll(async () => {
 });
 
 describe("MCP surface", () => {
-  it("exposes exactly the 5 SPEC tools over Streamable HTTP", async () => {
+  it("exposes the SPEC tools plus set_language over Streamable HTTP", async () => {
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual([
       "chat",
@@ -63,6 +63,7 @@ describe("MCP surface", () => {
       "list_sessions",
       "log_activity",
       "recall",
+      "set_language",
     ]);
     for (const t of tools) {
       expect(t.inputSchema).toBeDefined();

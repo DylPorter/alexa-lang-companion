@@ -45,6 +45,15 @@ export function ConversationPane({
         <div key={`${t.ts}-${i}`} className={`bubble bubble-${t.role}`}>
           {t.role === "assistant" && <Orb state="idle" size="small" />}
           <div className="bubble-body">
+            {t.role === "assistant" && t.switchedTo && (
+              <span
+                className="language-switch"
+                data-testid="language-switch"
+                title="The learner asked for this out loud; Sala changed the session's language and kept the conversation going"
+              >
+                ⇄ now speaking {t.switchedTo}
+              </span>
+            )}
             <div className="bubble-text">{t.text}</div>
             {t.role === "assistant" && t.remembered && (
               <span className="remembered-badge" data-testid="remembered-badge" title="Sala referenced something genuinely stored in memory">

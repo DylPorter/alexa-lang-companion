@@ -11,6 +11,7 @@ import { z } from "zod";
 import { MemoryStore, Review } from "../memory/db.js";
 import { LLM, ChatMessage } from "../llm/types.js";
 import { chatSystemPrompt } from "../persona/prompts.js";
+import { detectLanguageSwitch, languageName, normalizeLanguageCode } from "../persona/languages.js";
 import {
   annotateRecurrence,
   extractReview,
@@ -118,7 +119,8 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         "Sala — a living-room language companion that remembers your life. " +
         "Call chat for conversation, log_activity when the user shares something they did, " +
         "recall for transparency into stored memory, end_session to generate the session review, " +
-        "list_sessions to see conversation history.",
+        "list_sessions to see conversation history, set_language to change which language " +
+        "Sala speaks for the rest of a session (or let `chat` notice it in the words).",
     },
   );
 
@@ -128,10 +130,13 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
     {
       title: "Chat with Sala",
       description:
-        "One conversational turn: Sala replies in the target language as a friend, " +
+        "One conversational turn: Sala replies in the session's language as a friend, " +
         "with at most one gentle recast correction, weaving in genuinely recalled " +
         "personal context. memoryReferenced is true ONLY when stored facts were " +
-        "actually retrieved and offered to the model.",
+        "actually retrieved and offered to the model. The learner can change language by " +
+        "asking for it in the message ('let's speak French') — the session then continues " +
+        "in that language and the reply says so in `language`/`languageChanged`; pass " +
+        "`targetLanguage` to set it without the words being understood here.",
       inputSchema: {
         message: z.string().min(1).describe("The user's message (any language)"),
         sessionId: z
@@ -148,17 +153,42 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
         sessionId: z.string(),
         memoryReferenced: z.boolean(),
         isNewSession: z.boolean(),
+        /** The language Sala is now speaking — it can differ from the stored one. */
+        language: z.string(),
+        /** True when THIS message asked to change language and the session followed. */
+        languageChanged: z.boolean(),
+        /** Same value as `language`, spelled out, so a client never needs its own table. */
+        languageName: z.string(),
       },
     },
     async ({ message, sessionId, targetLanguage }) => {
-      const language = targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
       let sid = sessionId;
       let isNewSession = false;
       if (!sid || !memory.getSession(sid)) {
-        sid = memory.createSession(language, DEFAULT_NATIVE_LANGUAGE, sid);
+        sid = memory.createSession(targetLanguage ?? DEFAULT_TARGET_LANGUAGE, DEFAULT_NATIVE_LANGUAGE, sid);
         isNewSession = true;
       }
-      memory.addMessage(sid, "user", message);
+      const session = memory.getSession(sid);
+      // The session's STORED language is the truth for a continuing conversation. The
+      // old code fell back to DEFAULT_TARGET_LANGUAGE on every turn that omitted
+      // `targetLanguage`, so a French session silently snapped back to English after
+      // one turn — which is exactly what a speaker-driven demo must not do.
+      const previousLanguage = session?.language ?? targetLanguage ?? DEFAULT_TARGET_LANGUAGE;
+
+      // An explicit parameter wins over the words in the message: a client that has
+      // already decided (real Alexa+ does the understanding) should not be overridden
+      // by a stray "how do you say that in Spanish?" inside the turn.
+      const explicit = targetLanguage?.trim();
+      const nextLanguage = explicit
+        ? normalizeLanguageCode(explicit) ?? explicit
+        : detectLanguageSwitch(message)?.code ?? previousLanguage;
+      const switched = nextLanguage !== previousLanguage;
+      if (switched) memory.setSessionLanguage(sid, nextLanguage);
+
+      // Tagged with the language it arrived in: the request to switch was spoken in the
+      // OLD language, and Sala's answer in the new one. That is what makes a mixed
+      // session legible to the review at the end.
+      memory.addMessage(sid, "user", message, previousLanguage);
 
       // Genuine recall only: FTS over stored activities + OTHER sessions' messages.
       const recalled = memory.recall({ query: message, limit: 4, excludeSessionId: sid });
@@ -166,7 +196,11 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       const memoryReferenced = contextLines.length > 0;
 
       const system = chatSystemPrompt(
-        { targetLanguage: language, nativeLanguage: DEFAULT_NATIVE_LANGUAGE },
+        {
+          targetLanguage: nextLanguage,
+          nativeLanguage: DEFAULT_NATIVE_LANGUAGE,
+          justSwitchedFrom: switched ? previousLanguage : undefined,
+        },
         contextLines,
       );
       const history: ChatMessage[] = memory
@@ -186,7 +220,7 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       if (!reply) {
         reply = "Sorry — I lost my words for a second. Could you say that again?";
       }
-      memory.addMessage(sid, "assistant", reply);
+      memory.addMessage(sid, "assistant", reply, nextLanguage);
 
       return {
         structuredContent: {
@@ -194,8 +228,67 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
           sessionId: sid,
           memoryReferenced,
           isNewSession,
+          language: nextLanguage,
+          languageName: languageName(nextLanguage),
+          languageChanged: switched,
         },
         content: [{ type: "text" as const, text: reply }],
+      };
+    },
+  );
+
+  // ------------------------------------------------------------- set_language
+  server.registerTool(
+    "set_language",
+    {
+      title: "Change the language Sala speaks",
+      description:
+        "Persist a new language for a live session — the same thing that happens when a " +
+        "learner says \"let's speak French\", but asked directly. A capable client (Alexa+ " +
+        "does the understanding) calls this after working out the intent; a client that " +
+        "only forwards text still gets the switch, because `chat` recognises the request " +
+        "in the message itself. Applies to the rest of the session: the persona, the " +
+        "review at the end, and the device's voice. Codes outside the built-in name table " +
+        "are accepted rather than refused — Sala then speaks whatever that code means to " +
+        "the model, and the UI falls back to a browser voice.",
+      inputSchema: {
+        sessionId: z.string().describe("The Sala session id returned by chat"),
+        language: z
+          .string()
+          .min(1)
+          .describe('BCP-47-ish code ("fr", "de-DE") or a language name ("French", "français", "deutsch")'),
+      },
+      outputSchema: {
+        sessionId: z.string(),
+        previousLanguage: z.string(),
+        language: z.string(),
+        languageName: z.string(),
+        changed: z.boolean(),
+      },
+    },
+    async ({ sessionId, language }) => {
+      const session = memory.getSession(sessionId);
+      if (!session) {
+        return {
+          isError: true,
+          content: [{ type: "text" as const, text: `Unknown session: ${sessionId}` }],
+        };
+      }
+      const next = normalizeLanguageCode(language) ?? language.trim();
+      const changed = next !== session.language;
+      if (changed) memory.setSessionLanguage(sessionId, next);
+      const text = changed
+        ? `Sala will speak ${languageName(next)} for the rest of this session.`
+        : `Already speaking ${languageName(next)} — nothing changed.`;
+      return {
+        structuredContent: {
+          sessionId,
+          previousLanguage: session.language,
+          language: next,
+          languageName: languageName(next),
+          changed,
+        },
+        content: [{ type: "text" as const, text }],
       };
     },
   );
@@ -290,12 +383,18 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
           content: [{ type: "text" as const, text: `Unknown session: ${sessionId}` }],
         };
       }
-      const transcript = memory
-        .getTranscript(sessionId)
-        .map((m) => ({ role: m.role, content: m.content }));
+      const rows = memory.getTranscript(sessionId);
+      const transcript = rows.map((m) => ({ role: m.role, content: m.content }));
+      // Which languages were actually spoken, in order of appearance. Empty tags (rows
+      // written before switching existed) do not count as a language of their own.
+      const spoken = [...new Set(rows.map((r) => r.language).filter((l) => l !== ""))];
       const { review, path } = await extractReview(
         transcript,
-        { targetLanguage: session.language, nativeLanguage: DEFAULT_NATIVE_LANGUAGE },
+        {
+          targetLanguage: session.language,
+          nativeLanguage: DEFAULT_NATIVE_LANGUAGE,
+          sessionLanguages: spoken.length > 1 ? spoken : undefined,
+        },
         llm,
       );
 
@@ -334,8 +433,8 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
     {
       title: "List past sessions",
       description:
-        'The "remembers every conversation" proof: every past session with date, ' +
-        "language, summary, and its stored review.",
+        'The "remembers every conversation" proof: every past session with date, the ' +
+        "language(s) it covered, summary, and its stored review.",
       inputSchema: {},
       outputSchema: {
         sessions: z.array(
@@ -343,6 +442,13 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
             id: z.string(),
             date: z.string(),
             language: z.string(),
+            /**
+             * Every language the session actually covered, in order of appearance —
+             * `["fr"]` for a French session, `["en", "fr"]` for one where the learner
+             * asked to switch halfway. Equals `[language]` for sessions whose rows carry
+             * no per-message tag (written before switching existed).
+             */
+            languages: z.array(z.string()),
             summary: z.string().nullable(),
             review: reviewSchema.nullable(),
           }),
@@ -350,10 +456,13 @@ export function buildSalaServer(deps: SalaDeps): McpServer {
       },
     },
     async () => {
-      const sessions = memory.listSessions().map((s) => ({
+      const list = memory.listSessions();
+      const spoken = memory.languagesBySession(list.map((s) => s.id));
+      const sessions = list.map((s) => ({
         id: s.id,
         date: s.date,
         language: s.language,
+        languages: spoken[s.id]?.length ? spoken[s.id] : [s.language],
         summary: s.summary,
         review: s.review,
       }));

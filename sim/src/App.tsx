@@ -3,9 +3,9 @@ import {
   healthUrlFor,
   mcpUrlFromLocation,
   DEVICE_STATE_COPY,
+  LANGUAGES,
   PRODUCT_NAME,
   SIMULATION_LABEL,
-  LanguageCode,
 } from "./constants";
 import { SalaClient } from "./mcp/client";
 import type { WireEvent } from "./mcp/wireLog";
@@ -58,7 +58,9 @@ export default function App() {
   const [conn, setConn] = useState<Conn>({ status: "connecting" });
   const clientRef = useRef<SalaClient | null>(null);
 
-  const [language, setLanguage] = useState<LanguageCode>("en");
+  const [language, setLanguage] = useState<string>("en");
+  /** Name of the language in force, taken from the server's reply — no client-side table. */
+  const [languageName, setLanguageName] = useState("English");
   const [conv, dispatch] = useReducer(convReducer, initialConv);
   const sessionRef = useRef<string | null>(null);
 
@@ -161,13 +163,18 @@ export default function App() {
           chatRequestArgs({ sessionId: sessionRef.current }, text, language),
         );
         sessionRef.current = result.sessionId;
+        // The server owns the session's language: it may have moved because the learner
+        // asked out loud. Follow it — same transcript, new voice, nothing restarted.
+        const spoken = result.language || language;
+        if (spoken !== language) setLanguage(spoken);
+        if (result.languageName) setLanguageName(result.languageName);
         dispatch({ type: "REPLY", result, ts: Date.now() });
         if (mode === "voice") {
           // half-duplex: speak the reply, gate the mic until TTS finishes
           voiceEvent({ type: "REPLY_READY" });
           void speak(
             result.reply,
-            language,
+            spoken,
             {
               onStart: setTtsBackend,
               onEnd: () => voiceEvent({ type: "TTS_DONE" }),
@@ -265,19 +272,37 @@ export default function App() {
     }
   }, [ending, refreshSessions]);
 
-  const changeLanguage = useCallback((code: LanguageCode) => {
-    // targetLanguage is per-session honest: switching clears the live session
-    // (ended sessions stay in Past sessions with their stored language).
-    cancelSpeech();
-    sttHandleRef.current?.stop();
-    sttHandleRef.current = null;
-    setInterim(null);
-    setVoice("idle");
-    sessionRef.current = null;
-    setReviewResult(null);
-    dispatch({ type: "CLEAR" });
-    setLanguage(code);
-  }, []);
+  /**
+   * Tap-to-switch. Kept for the console view, but it no longer wipes the conversation:
+   * it retargets the LIVE session through `set_language`, so Sala keeps the thread and
+   * the review at the end knows the session covered two languages. The in-flight
+   * microphone still stops, because its recognition locale belongs to the old language.
+   */
+  const changeLanguage = useCallback(
+    async (code: string) => {
+      if (code === language) return;
+      cancelSpeech();
+      sttHandleRef.current?.stop();
+      sttHandleRef.current = null;
+      setInterim(null);
+      setVoice("idle");
+      const client = clientRef.current;
+      const sid = sessionRef.current;
+      if (client && sid && conn.status === "ready") {
+        try {
+          await client.setLanguage({ sessionId: sid, language: code });
+        } catch (err) {
+          // Do not move the UI to a language the server refused — the picker and the
+          // session would disagree, and the next reply would expose that.
+          dispatch({ type: "FAIL", error: `set_language failed: ${errMsg(err)}` });
+          return;
+        }
+      }
+      setLanguage(code);
+      setLanguageName(LANGUAGES.find((l) => l.code === code)?.label ?? code);
+    },
+    [language, conn.status],
+  );
 
   // cleanup on unmount
   useEffect(() => () => cancelSpeech(), []);
@@ -301,7 +326,12 @@ export default function App() {
           <span className="tagline">your living-room language companion</span>
         </div>
         <div className="topbar-mid">
-          <LanguagePicker value={language} onChange={changeLanguage} disabled={!ready} />
+          <LanguagePicker
+            value={language}
+            onChange={changeLanguage}
+            disabled={!ready}
+            currentName={languageName}
+          />
         </div>
         <div className="topbar-right">
           <span className="sim-label" data-testid="sim-label" title="Required honesty label: this web app simulates the Alexa+ experience">

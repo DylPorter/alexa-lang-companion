@@ -26,7 +26,7 @@ across sessions."
    │   non-simulated track path too: a real MCP server, imported and called at runtime)
    ▼
 [MCP server — TypeScript, @modelcontextprotocol/sdk, Streamable HTTP]
-   tools: chat · log_activity · recall · end_session · list_sessions
+   tools: chat · log_activity · recall · end_session · list_sessions · set_language
    ├─ Memory store: SQLite (activities, conversations, session summaries, review items)
    │    recall = FTS5 keyword + recency; NO embeddings for v1 (honest simplicity)
    │    portability pitch: the DB file is the user's — production identity via OAuth 2.1
@@ -84,7 +84,34 @@ notes; the hackathon's sanctioned path remains our own web-app simulation.
 | `log_activity` | `{text, when?}` | `{id}` | user told the companion something they did/are doing; timestamped |
 | `recall` | `{query?, since?, limit?}` | `{activities[], pastSessions[]}` | FTS5 + recency; used by `chat` internally and exposed for transparency |
 | `end_session` | `{sessionId}` | `{review: {vocabulary[], grammar[], summary}}` | **the money shot**: review items extracted from what was ACTUALLY said this session — words the user used or struggled with (with the user's own sentence as the example), 1-2 grammar points tied to observed mistakes; stored as a session summary |
-| `list_sessions` | `{}` | `[{id, date, language, summary}]` | the "remembers every conversation" proof; sim shows past sessions + their review lists |
+| `list_sessions` | `{}` | `[{id, date, language, languages[], summary}]` | the "remembers every conversation" proof; sim shows past sessions + their review lists; `languages[]` is every language the session covered, in order |
+| `set_language` *(added 2026-10-23)* | `{sessionId, language}` | `{sessionId, previousLanguage, language, languageName, changed}` | changes which language Sala speaks for the rest of a LIVE session without ending it. A capable client (real Alexa+ does the NLU) calls this; `chat` also recognises the request in the learner's own words, so a text-only client still gets it |
+
+### Language switching (added 2026-10-23)
+
+A speaker product where changing language means tapping a setting is not a speaker product. Two
+entry points, one persisted truth:
+
+- **`set_language`** — the direct call, for a client that already understood the request.
+- **In the words themselves** — `chat` runs `detectLanguageSwitch()` (`src/persona/languages.ts`)
+  over the message: find a token that IS a known language name or code, then require a REQUEST
+  shape next to it ("let's", "can you", "switch to", "translate", "French please"). A bare mention
+  must not hijack the session: "I speak French at work", "what's the word in Spanish?", "how do you
+  say thank you in Korean" all leave the language alone, and those are asserted in
+  `tests/languages.test.ts` alongside 22 shapes that must switch, in five languages.
+
+Consequences that make it one feature rather than a setter: `chat` resolves the language from the
+SESSION (not `targetLanguage ?? "en"`, which used to reset an ongoing French session every turn);
+each message row records the language it arrived in, so `end_session` can tell the review the
+conversation covered two; the sim adopts whatever the server reports instead of wiping the
+transcript, and rebinds its TTS/STT locale to it; `justSwitchedFrom` tells the persona to open with
+one short clause in the new language, so the handover is audible rather than a silent restart.
+
+Honest limits: identity matching for mistake recurrence is per-language-prefix, so a session that
+switched may under-count a repeated mistake (under-claiming, never a fabricated count); and an
+unknown code ("nl") is accepted rather than refused — Sala speaks what the model believes that code
+means, and the sim falls back to a browser voice.
+
 
 ## Positioning (steered twice 10-20, Dylan): language-agnostic companion, anchored in real learners
 
