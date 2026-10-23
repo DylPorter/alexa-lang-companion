@@ -5,13 +5,15 @@
  * same value, send x-api-key AND Authorization: Bearer (proxies read one or the
  * other). NEVER mix differing values, never log key material.
  */
-import { ChatMessage, LLM, maxTokensFor } from "./types.js";
+import { ChatMessage, LLM, maxTokensFor, modelForPhase, thinkingForPhase } from "./types.js";
 
 export class ProxyLLM implements LLM {
   readonly name = "proxy" as const;
   private readonly base: string;
   private readonly key: string;
   private readonly model: string;
+  /** True when the caller injected a model id — then no env override may fire. */
+  private readonly modelWasInjected: boolean;
 
   constructor(baseUrl?: string, apiKey?: string, model?: string) {
     this.base = (baseUrl ?? process.env.ANTHROPIC_BASE_URL ?? "").replace(/\/+$/, "");
@@ -24,8 +26,19 @@ export class ProxyLLM implements LLM {
     if (!this.key) {
       throw new Error("ProxyLLM requires ANTHROPIC_API_KEY (or ANTHROPIC_AUTH_TOKEN)");
     }
+    this.modelWasInjected = model !== undefined;
     this.model =
       model ?? process.env.SALA_MODEL ?? process.env.ANTHROPIC_MODEL ?? "qwen3.8-flash";
+  }
+
+  /**
+   * The model id for one phase. Per-phase routing (docs/LATENCY.md) lets the
+   * end-of-session extraction run on a cheaper/faster model while the persona
+   * chat stays on the good one: SALA_REVIEW_MODEL / SALA_CHAT_MODEL. Unset, both
+   * phases use the default id, so behaviour is unchanged.
+   */
+  modelFor(phase: "chat" | "review"): string {
+    return this.modelWasInjected ? this.model : modelForPhase(phase, this.model);
   }
 
   async invoke(phase: "chat" | "review", system: string, messages: ChatMessage[]): Promise<string> {
@@ -41,13 +54,23 @@ export class ProxyLLM implements LLM {
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: this.model,
+        // Per-phase model id (SALA_REVIEW_MODEL / SALA_CHAT_MODEL), defaulting to
+        // the backend's own id — see modelFor() and docs/LATENCY.md.
+        model: this.modelFor(phase),
         max_tokens: maxTokensFor(phase),
         temperature: phase === "review" ? 0 : 0.7,
+        // Measured 2026-10-23: disabling reasoning on the extraction pass takes it
+        // from 33.6s-50s to 5.7s (thinking is billed against max_tokens and this call
+        // has nothing to reason about). Chat sends no thinking field at all, so the
+        // persona keeps the gateway default; SALA_CHAT_THINKING=off takes the persona
+        // out of reasoning too if you want the extra speed on camera. See docs/LATENCY.md.
+        ...thinkingForPhase(phase),
         system,
         messages: messages.map((m) => ({ role: m.role, content: m.content })),
       }),
-      signal: AbortSignal.timeout(60_000),
+      // 150s, under the sim's 180s tool timeout, so a slow gateway fails here with
+      // a named error instead of the client timing out over a still-running call.
+      signal: AbortSignal.timeout(150_000),
     });
     if (!resp.ok) {
       // Do not include response body blindly — it can echo request headers.

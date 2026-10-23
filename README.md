@@ -113,6 +113,15 @@ match (accent-insensitive via `unicode61 remove_diacritics 2`) ranked by bm25 th
 no embeddings. That is a deliberate v1 choice: the recall behaviour is explainable to a learner
 ("it matched your word, most recent first") and testable offline.
 
+On `end_session`, each grammar point also carries a `mistakeId` — a stable identity for the mistake
+class, so an LLM-written label and the deterministic table's own id land on the same key. When that
+same id is already stored for an **earlier** session, the point gains `recurrence.seenInSessions`
+(distinct sessions, counted from `session_mistakes` rows read *before* this session's are written) and
+the summary names the date it first appeared. A first-time mistake carries neither, because nothing is
+asserted that the database does not hold. No embeddings and no similarity index here either: "have I
+seen this before" is an exact-key question, so it gets an exact key and a `COUNT`, and the number stays
+explainable while someone is saying it out loud.
+
 There is **no third-party API to Alexa+ native memory** for add-ons, so portable private memory
 is the architecture, not a limitation: the DB file is yours. Copy it, back it up, delete it, and
 that is the whole account. Production identity would arrive as Alexa+ account linking over
@@ -377,8 +386,21 @@ own tooling, not only against vendors.
   (FTS5 is keyword + recency, not semantic). Rehearse the openers before recording.
 - **Bedrock is gated until a human enablement step** (IAM user, model access, region). The code
   path is complete and tested in shape. Without AWS creds the smoke reports GATED, not failed.
-- **`end_session` takes 28-41 s on a live LLM backend.** The button says "Generating review…",
-  and the video cuts around it.
+- **`end_session` takes ~6-7 s on a live LLM backend** (median 6.3 s and 6.6 s in two independent
+  runs on 2026-10-23, `npx tsx scripts/latency-probe.ts bench 3`). It was 22-47 s until the extraction
+  pass stopped reasoning — the gateway thinks by default and bills that against `max_tokens`, and a
+  JSON extraction over a transcript handed to it whole has nothing to reason about. Full measurements,
+  including which request shapes the gateway silently ignores: [docs/LATENCY.md](docs/LATENCY.md).
+  The button still says "Generating review…", because 6 s is still a wait on camera.
+- **Chat turns are the slow half now**: median **5.7 s** (5.0/9.4/5.7), gateway-varied. The persona
+  pass keeps reasoning on by default because reply *quality* is the product there. `SALA_CHAT_THINKING=off`
+  measured median **0.9 s** (1.7/0.8/0.9) on the same instrument — but the replies came back at 49-80
+  characters against 100-148 with reasoning on, i.e. roughly half the language per turn. For a product
+  whose whole pitch is comprehensible input that is a real cost, not a free speedup: the knob is there
+  per take, it is not the shipped default. Read with it off, the P1-P5 transcripts still held the
+  persona contract (one recast per exchange, "you never told me about Japan" on the un-logged trip, a
+  correct `vous êtes allés` recast in French) — but those five probes are printed for a human to read,
+  not asserted, so that is my judgement on one run, not a green checkmark.
 - **Recall is keyword-based.** No embeddings in v1, on purpose. Semantic-but-wordless connections
   ("that thing with the ropes") will not match "climbing wall".
 
