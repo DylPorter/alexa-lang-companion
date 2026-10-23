@@ -141,3 +141,22 @@ seen onto the heuristic table's ids). Two differently-worded labels for one mist
 identities and the chip stays silent. The failure mode is under-claiming, never a number with no row
 behind it — for filming, close the sessions in the same language with the same error and the count
 goes up on camera.
+
+### The same thing seen through the browser, not the terminal
+
+`?device=1` (the filming view) driven with the keyboard only: one typed turn ("Yesterday I go to the
+park and I see three dog."), End session, panel rendered. Read off the live DOM, not the source:
+
+- chip text exactly `recurring · seen 4×`, title `first seen 2026-10-23`, on the Past Simple Tense card
+- summary ends `1 of these is a mistake you've made before, first logged on 2026-10-23.`
+- panel line `path: llm`, "Simulated Alexa+ experience" label still on screen in device mode
+- chip contrast **5.09:1** (`#f0c987` on `#262f41`) — clears WCAG 2.2 AA (4.5:1) and large-text AAA;
+  the card body text next to it is 11.40:1, so the chip reads slightly softer than the prose by design
+- no overflow, no clipping, no overlap; card and chip bounding boxes clean
+- Past sessions tab: 4 ended sessions, each with its stored review
+- console: **zero** errors or warnings for the whole flow
+- captures: `docs/a3-assets/a3-01-initial-device-view.png`, `a3-02-review-panel.png`,
+  `a3-04-past-simple-card.png`
+
+The DB agrees: 8 `session_mistakes` rows, `en-past-simple-tense` present in 4 distinct sessions, so the
+next session Alan closes says `seen 5×` — with every number behind it a row.
