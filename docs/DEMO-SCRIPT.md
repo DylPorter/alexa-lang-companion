@@ -87,9 +87,11 @@ no-speech ends.
 ### Beat 6 — end_session review panel (1:50-2:20) [PROXY]
 
 Screen: press End session. Button reads "Generating review…".
-**Edit: cut this wait.** On the live take it is 28-41 s of LLM extraction. Cut from the click to
-the rendered panel. Never speed-ramp it; a cut is honest, a timelapse of a spinner is not
-misleading either but the cut reads cleaner.
+**Edit: keep the wait in one shot now.** Measured 2026-10-23, the extraction pass runs **5-10 s**
+(median 6.3-6.6 s over eleven samples; it was 22-47 s until reasoning came off that call —
+[docs/LATENCY.md](LATENCY.md)). Six seconds of "Generating review…" reads as the product thinking, so
+film it. If a take lands over ~20 s, cut from the click to the rendered panel; never speed-ramp, a cut
+is honest and a timelapse of a spinner is not misleading either but the cut reads cleaner.
 On screen: review panel. Vocabulary cards quoting the learner's own sentences verbatim
 ("Yesterday I go to climbing wall and I am very tire after."), grammar pairs: YOU SAID /
 NATURAL with the one-line explanation, `path:` line under the panel.
@@ -143,8 +145,11 @@ after 2:40.
    background becomes part of your transcript.
 6. **Never on camera:** the `?voicedebug=1` STT test double form (headless QA only), any `.env`
    or terminal with tokens, the browser bookmark bar, other tabs. Check the frame edges.
-7. **Latency:** chat turns run 3-14 s on the proxy. Speak or type, then breathe. Do not
-   hammer Send. End session is the 28-41 s cut (Beat 6).
+7. **Latency (re-measured 10-23, `docs/LATENCY.md`):** chat turns median **5.7 s** on the proxy
+   (5.0/9.4/5.7 — the 9.4 s rep is gateway variance, not the prompt), End session is a **5-10 s** wait
+   that now fits inside the take. Speak or type, then breathe. Do not hammer Send. `SALA_CHAT_THINKING=off`
+   makes turns ~0.9 s but roughly halves the reply length, so it is a last-resort knob for one take, not
+   the config to record the whole video in.
 8. **If a turn misfires** (empty proxy reply, mis-transcript): stop, fix, re-run that beat on
    the same DB and cut in edit. The server already retries empty replies once.
 9. **After recording:** `end_session` reviews shown on camera came from the takes you kept.
@@ -184,17 +189,34 @@ go public, so swap the wording. Verified against the source on 10-23, not from m
    task extracts..."**. Audio never reaches a third-party add-on at all — the device streams to Amazon's
    cloud, and Alexa+ does the ASR, the response generation and the UI (verified from the MCP Toolkit
    overview and quoted in SPEC.md). And the extraction is not asynchronous: it runs inline inside
-   `end_session`, which is why it measures 22-47 s on camera. Say: **"Alexa+ handles the listening and
-   the speaking. Our add-on gets text back, and when a session closes the whole transcript is re-read
-   to build the review — one pass, before the panel appears."** If you want the pause to look deliberate
-   instead of like a stall, use the Beat 6 cut-around already in this runbook.
+   `end_session`, which is why it measured 22-47 s on camera. **That is fixed as of 10-23** — the
+   extraction pass stopped reasoning, and it now runs 5-10 s (`docs/LATENCY.md`), so the wait is short
+   enough to sit inside the take. Say: **"Alexa+ handles the listening and the speaking. Our add-on
+   gets text back, and when a session closes the whole transcript is re-read to build the review — one
+   pass, before the panel appears."**
 
 4. **"tracking of recurring grammar mistakes" / "Alexa mentions the problem that persists"** (Beat 3
-   and the hook). Nothing compares a mistake against previous sessions. `end_session` reviews the
-   current transcript; past reviews are stored and listed by `list_sessions`, but no code notices a
-   repeat. Either cut that beat, or show what is really there: **the review quoting the learner's own
-   sentence, then `list_sessions` with yesterday's panel still on file.** Do not perform a persistence
-   feature we did not build — a judge cloning the repo will grep for it. Filed as an issue.
+   and the hook). ~~not built~~ **built the same day this was flagged** (commit `8a86e84`, issue #2
+   closed), so the beat is back — but it only fires on a real repeat, which changes how the take must
+   be set up. What the code does: every grammar point carries a `mistakeId`, and when the SAME id is
+   already stored for an **earlier** session the point gains `recurrence.seenInSessions` (a
+   `COUNT(DISTINCT session_id)` over rows written before today's, read *before* this session's rows
+   land) and the summary ends with "2 of these are mistakes you've made before, first logged on
+   2026-10-23." The panel shows a `recurring · seen 2×` chip.
+
+   **So the recurrence on camera has to be earned, not staged.** Before the take, close 2-3 real
+   sessions in the same target language that each contain the same mistake class — the past-tense one
+   ("Yesterday I go to climbing wall and I am very tire") is the natural candidate because the
+   heuristic table and the LLM label both fold onto `en-past-tense-adverb`. Do this in rehearsal, not
+   in a seeded DB: a row written by a script is a lie with better formatting, and the chip's whole
+   point is that the number came from conversations that actually happened. `rm data/sala.db*` only if
+   you are throwing the whole day away.
+
+   Wording: **"Sala keeps the identity of every mistake you make. Make the same one again in a later
+   session and it says so — this is the second time, here's when it first showed up."** Do not say
+   "it tracks all your recurring mistakes across the week": identity matching is exact-key, so two
+   differently-worded LLM labels for one class can stay two identities. The failure mode is *silence*,
+   never a count with no row behind it — which is the version worth filming anyway.
 
 5. **"keeping response times ultra-fast and staying well within token constraints."** Chat turns are
    fast, the review is not. Claim the retrieval discipline instead: **"only the relevant recalled
