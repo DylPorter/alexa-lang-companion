@@ -8,7 +8,7 @@ flowchart TB
 
   A -- "text in, text out (an add-on never receives audio)" --> S
 
-  S["<b>Sala MCP server</b> — TypeScript, self-hosted<br/>protocol 2025-11-25 · @modelcontextprotocol/sdk 1.32.1<br/>chat · log_activity · recall · end_session · list_sessions"]
+  S["<b>Sala MCP server</b> — TypeScript, hosted anywhere<br/>protocol 2025-11-25 · @modelcontextprotocol/sdk 1.32.1<br/>chat · log_activity · recall · end_session · list_sessions"]
 
   S --> M["<b>Long-term memory</b><br/>SQLite, one file, the user's own<br/>FTS5 keyword + bm25 + recency, accent folding<br/><i>no embeddings, no vector DB</i>"]
   S --> E["<b>end_session</b><br/>reads the real transcript, inline<br/>→ vocab + grammar + summary stored on the session"]

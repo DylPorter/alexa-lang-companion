@@ -107,7 +107,7 @@ learner's own sentences, displayed verbatim. Pass `sessionId` back on every foll
 
 ## How memory works
 
-Self-hosted SQLite (better-sqlite3 13.0.3, SQLite 3.53.4). Activities, conversations, session
+SQLite (better-sqlite3 13.0.3, SQLite 3.53.4), one file on whatever host runs the server. Activities, conversations, session
 summaries and review items live in one file, `data/sala.db` by default. Recall is FTS5 keyword
 match (accent-insensitive via `unicode61 remove_diacritics 2`) ranked by bm25 then recency, with
 no embeddings. That is a deliberate v1 choice: the recall behaviour is explainable to a learner
@@ -327,7 +327,9 @@ Local-first demo, honest about its boundary:
 - **Body cap** — request bodies stream through a 2 MB cap. Oversized → 413 + socket destroy,
   no unbounded-buffering DoS.
 - **Single-user stub** — constant demo `account_id`. Production identity is OAuth 2.1 account
-  linking (above). Memory stays self-hosted, portable and private by architecture.
+  linking (above). Memory stays one portable file, private by architecture, wherever the server
+  runs. The server itself is plain Streamable HTTP: host it on your own machine, your own VPS, or
+  any host you pick — nothing in the design assumes which.
 
 ## Friction log
 

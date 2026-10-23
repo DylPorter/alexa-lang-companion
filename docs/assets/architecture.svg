@@ -34,7 +34,7 @@
 
   <!-- server core -->
   <rect class="core" x="360" y="320" width="880" height="170" rx="12"/>
-  <text class="h2" x="392" y="362">Sala MCP server — TypeScript, self-hosted</text>
+  <text class="h2" x="392" y="362">Sala MCP server — TypeScript, hosted anywhere</text>
   <text class="mono" x="392" y="398">protocol 2025-11-25 · @modelcontextprotocol/sdk 1.32.1</text>
   <text class="body" x="392" y="432">chat · log_activity · recall · end_session · list_sessions</text>
   <text class="cap" x="392" y="464">stateless transport: every durable thing lives in the store below, not in the process</text>

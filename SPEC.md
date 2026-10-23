@@ -6,8 +6,12 @@ target language about what you actually did today, remembers every conversation,
 each session with a grammar and vocabulary review generated from the words you just used.
 
 **Submission:** Amazon "Build, Ship, Shape" (`amazonappdev2026.devpost.com`), **Alexa+ track**,
-deadline 23 Oct 2026 12:00 PT. Path: **self-hosted MCP server** (spec ≥ 2025-11-25 over
-**Streamable HTTP**; we target current 2026-07-28 via the official SDK) demonstrated through
+deadline 23 Oct 2026 12:00 PT. Path: the rule's **self-hosted MCP server**, in our words an **MCP
+server hosted anywhere** — the server is plain HTTP, we run it on hardware we pick today and nobody
+else's promise stops a real product from running it elsewhere (spec ≥ 2025-11-25 over
+**Streamable HTTP**; the pinned SDK 1.32.1 implements 2025-11-25, which is the version Alexa+ for
+Builders supports — the newer 2026-07-28 revision is not implemented by any published SDK version,
+corrected 10-22 because this line used to claim we targeted it) demonstrated through
 the **sanctioned web-app simulation** ("simulate an Alexa+ experience using your preferred
 agentic tools via a web app" — verified from the hackathon resources page; demo video must
 clearly show the simulated experience). Zero hardware, zero Amazon payment. The rules'

@@ -16,10 +16,16 @@ MCP server, implementing MCP spec version (minimum acceptable version is 2025-11
 Optionally, developers can simulate the Alexa+ experience in a web app using their own agentic
 tools."*
 
-- **We satisfy the mandatory half outright:** a real self-hosted MCP server over Streamable
-  HTTP, speaking protocol revision 2025-11-25 (the pinned SDK 1.32.1's `LATEST_PROTOCOL_VERSION`).
-  The web sim is a genuine MCP client: the SDK is imported and the server is called at runtime,
-  so the repo also satisfies the non-simulated reading of the track.
+- **We satisfy the mandatory half outright:** a real MCP server over Streamable HTTP, running on
+  infrastructure we choose — which is what the rule's "self-hosted" means — speaking protocol
+  revision 2025-11-25 (the pinned SDK 1.32.1's `LATEST_PROTOCOL_VERSION`). The web sim is a genuine
+  MCP client: the SDK is imported and the server is called at runtime, so the repo also satisfies
+  the non-simulated reading of the track.
+- **Wording decision, 2026-10-23 (Dylan):** our own copy — README, video narration, the
+  architecture diagram — says **"hosted anywhere"**, not "self-hosted". Nothing in the rules
+  requires the server to stay on the developer's laptop, and if Sala becomes a real product Amazon
+  (or any host) can run it. "Self-hosted" would be a claim we have to walk back later. The rule's
+  verbatim term appears only here and in the quote above, where we are mapping to the rule.
 - **The sim is the sanctioned optional half:** "simulate the Alexa+ experience in a web app
   using your own agentic tools." The demo video must clearly show the simulated experience, and
   ours does: a persistent "Simulated Alexa+ experience" label in the UI plus one narration line.

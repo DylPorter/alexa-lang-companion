@@ -19,7 +19,7 @@ The "Simulated Alexa+ experience" label stays on screen in both modes; never cro
 
 Cut to console view (`d`), scroll the inspector so a real `tools/call` row is visible with its
 JSON-RPC payload, one line of VO: *"that conversation is not a mocked chat — it is a live MCP
-client calling a self-hosted server over Streamable HTTP, protocol 2025-11-25."* Cut back to device
+client calling a real MCP server over Streamable HTTP, protocol 2025-11-25."* Cut back to device
 view. This beat exists because the rules judge whether the required technology is actually called
 at runtime, and an inspector frame answers that in a way narration cannot.
 
@@ -37,8 +37,9 @@ VO (Alan or Dylan, one breath):
 
 Screen: scroll the MCP tool-call inspector open, show `initialize` + one `tools/call` row.
 VO:
-> "The server behind this is a real self-hosted MCP server over Streamable HTTP, protocol
-> 2025-11-25, the version Alexa+ for Builders speaks. In production Alexa+ is the MCP client
+> "The server behind this is a real MCP server over Streamable HTTP, protocol 2025-11-25, the
+> version Alexa+ for Builders speaks. It's an HTTP endpoint, so it runs wherever you want it —
+> your own machine, your own server, any host you pick. In production Alexa+ is the MCP client
 > and does the understanding and the talking. This web app simulates that device side: the
 > voice layer simulates Alexa+'s device-side ASR/TTS, and the MCP server receives text, exactly
 > like a real Alexa+ add-on."
@@ -103,9 +104,9 @@ Screen: switch to the Past sessions tab. Yesterday's session (seeded before reco
 honest prior session from rehearsal is fine: it IS a real prior session) with its language tag
 and stored review, expandable.
 VO:
-> "Every session stays. The DB file is the whole account: portable, private, self-hosted. There
-> is no third-party Alexa+ memory API for add-ons, so your memory living in your own file is the
-> architecture, not a workaround."
+> "Every session stays. The DB file is the whole account: one file, portable, private, yours to
+> copy or delete. There is no third-party Alexa+ memory API for add-ons, so your memory living in
+> a file instead of someone else's graph is the architecture, not a workaround."
 
 ### Beat 8 — Close (2:40-3:00) [PROXY]
 
@@ -167,8 +168,11 @@ go public, so swap the wording. Verified against the source on 10-23, not from m
 
 1. **"It runs entirely on the Alexa hardware you already own with no extra subscriptions or apps
    required."** We have never run on an Alexa+ device, and the rules require the video to clearly show
-   a *simulated* experience. Say: **"It's an Alexa+ add-on: a self-hosted MCP server you host yourself,
-   so no extra subscription and no app to open — the speaker you already own is the interface."**
+   a *simulated* experience. Say: **"It's an Alexa+ add-on — an MCP server you run on whatever host
+   you choose, so no extra subscription and no app to open. The speaker you already own is the
+   interface."** (Deliberately not "self-hosted" in our own copy: the rules use that word for the
+   track, but nothing says Amazon can't run the server later. "Hosted anywhere" is the product claim
+   and it is equally true of the compliance claim. See docs/SUBMISSION.md.)
 
 2. **"Long-Term Memory / Vector DB"** in the architecture visual, and any mention of embeddings. There
    is no vector database. `src/memory/db.ts` is SQLite + FTS5 keyword search with bm25 and recency,
